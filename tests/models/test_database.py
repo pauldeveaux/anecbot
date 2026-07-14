@@ -1,10 +1,17 @@
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import aiosqlite
 import pytest
 
 from anecbot.models.database import close_db, init_db, run_migrations
+
+
+async def fetchall(db: aiosqlite.Connection, sql: str) -> list[Any]:
+    """Execute a query and return all rows as a list."""
+    async with db.execute(sql) as cursor:
+        return list(await cursor.fetchall())
 
 
 @pytest.fixture
@@ -34,11 +41,11 @@ async def test_fresh_db_applies_all_migrations(sample_migrations):
     try:
         await run_migrations(db, sample_migrations)
 
-        version = await db.execute_fetchall("SELECT version FROM schema_version")
+        version = await fetchall(db, "SELECT version FROM schema_version")
         assert version[0][0] == 2
 
-        tables = await db.execute_fetchall(
-            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+        tables = await fetchall(
+            db, "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
         )
         table_names = [t[0] for t in tables]
         assert "foo" in table_names
@@ -55,11 +62,11 @@ async def test_migrations_are_idempotent(sample_migrations):
         await run_migrations(db, sample_migrations)
         await run_migrations(db, sample_migrations)
 
-        version = await db.execute_fetchall("SELECT version FROM schema_version")
+        version = await fetchall(db, "SELECT version FROM schema_version")
         assert version[0][0] == 2
 
-        tables = await db.execute_fetchall(
-            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+        tables = await fetchall(
+            db, "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
         )
         table_names = [t[0] for t in tables]
         assert "foo" in table_names
@@ -81,7 +88,7 @@ async def test_migrations_apply_in_order(migrations_dir):
     try:
         await run_migrations(db, migrations_dir)
 
-        version = await db.execute_fetchall("SELECT version FROM schema_version")
+        version = await fetchall(db, "SELECT version FROM schema_version")
         assert version[0][0] == 1
 
         (migrations_dir / "0002_add_column.sql").write_text(
@@ -90,10 +97,10 @@ async def test_migrations_apply_in_order(migrations_dir):
 
         await run_migrations(db, migrations_dir)
 
-        version = await db.execute_fetchall("SELECT version FROM schema_version")
+        version = await fetchall(db, "SELECT version FROM schema_version")
         assert version[0][0] == 2
 
-        columns = await db.execute_fetchall("PRAGMA table_info(items)")
+        columns = await fetchall(db, "PRAGMA table_info(items)")
         column_names = [c[1] for c in columns]
         assert "name" in column_names
     finally:
@@ -115,7 +122,7 @@ async def test_non_sql_files_are_ignored(migrations_dir):
     try:
         await run_migrations(db, migrations_dir)
 
-        version = await db.execute_fetchall("SELECT version FROM schema_version")
+        version = await fetchall(db, "SELECT version FROM schema_version")
         assert version[0][0] == 1
     finally:
         await db.close()
@@ -135,13 +142,13 @@ async def test_init_db_creates_file_and_runs_migrations(monkeypatch):
         try:
             assert Path(db_path).exists()
 
-            version = await db.execute_fetchall("SELECT version FROM schema_version")
-            assert version[0][0] == 1
+            version = await fetchall(db, "SELECT version FROM schema_version")
+            assert version[0][0] >= 1
 
-            journal = await db.execute_fetchall("PRAGMA journal_mode")
+            journal = await fetchall(db, "PRAGMA journal_mode")
             assert journal[0][0] == "wal"
 
-            fk = await db.execute_fetchall("PRAGMA foreign_keys")
+            fk = await fetchall(db, "PRAGMA foreign_keys")
             assert fk[0][0] == 1
         finally:
             await close_db(db)

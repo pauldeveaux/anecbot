@@ -19,7 +19,7 @@ async def _ensure_schema_version_table(db: aiosqlite.Connection) -> None:
     await db.execute(
         "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)"
     )
-    row = await db.execute_fetchall("SELECT version FROM schema_version")
+    row = list(await db.execute_fetchall("SELECT version FROM schema_version"))
     if not row:
         await db.execute("INSERT INTO schema_version (version) VALUES (0)")
     await db.commit()
@@ -27,8 +27,8 @@ async def _ensure_schema_version_table(db: aiosqlite.Connection) -> None:
 
 async def _get_version(db: aiosqlite.Connection) -> int:
     """Return the current schema version number."""
-    row = await db.execute_fetchall("SELECT version FROM schema_version")
-    return row[0][0]
+    rows = list(await db.execute_fetchall("SELECT version FROM schema_version"))
+    return int(rows[0][0])
 
 
 async def run_migrations(db: aiosqlite.Connection, migrations_dir: Path) -> None:
@@ -44,7 +44,7 @@ async def run_migrations(db: aiosqlite.Connection, migrations_dir: Path) -> None
 
     for migration_file in migration_files:
         migration_number = _parse_migration_number(migration_file.name)
-        if migration_number <= current_version:
+        if migration_number is not None and migration_number <= current_version:
             continue
 
         logger.info("Applying migration %s", migration_file.name)
