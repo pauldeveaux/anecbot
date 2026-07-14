@@ -20,3 +20,4 @@ class Guild(Model):
     reveal_time: str = "13:30"
     leaderboard_reset_days: int = 0
     daily_limit: int = 0
+    started: int = 0

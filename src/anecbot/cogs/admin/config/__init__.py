@@ -5,8 +5,7 @@ from anecbot.cogs.admin.base import AdminCog
 from anecbot.cogs.admin.config import channel as channel_handler
 from anecbot.cogs.admin.config import interval as interval_handler
 from anecbot.cogs.admin.config import publish_time as publish_time_handler
-
-__all__ = ["ConfigCog"]
+from anecbot.cogs.admin.config import reset as reset_handler
 
 
 class ConfigCog(AdminCog):
@@ -39,3 +38,11 @@ class ConfigCog(AdminCog):
     async def config_publish_time(self, interaction: discord.Interaction, heure: str):
         """Set the publication time."""
         await publish_time_handler.handle(interaction, heure)
+
+    @config.command(
+        name="reset",
+        description="Réinitialiser la configuration aux valeurs par défaut",
+    )
+    async def config_reset(self, interaction: discord.Interaction):
+        """Reset configuration to defaults."""
+        await reset_handler.handle(interaction)
