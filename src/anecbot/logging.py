@@ -27,7 +27,11 @@ class ScopedFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         """Format log record with scope tag."""
         scope = next(
-            (tag for prefix, tag in SCOPE_MAP.items() if record.name.startswith(prefix)),
+            (
+                tag
+                for prefix, tag in SCOPE_MAP.items()
+                if record.name.startswith(prefix)
+            ),
             record.name,
         )
         level_color = LEVEL_COLORS.get(record.levelno, "")

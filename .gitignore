@@ -16,6 +16,7 @@ build/
 
 # SQLite
 *.db
+data/
 
 # OS
 .DS_Store
