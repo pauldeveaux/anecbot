@@ -38,6 +38,29 @@ class Model:
         return cls._from_row(row) if row else None
 
     @classmethod
+    async def create(cls, db: aiosqlite.Connection, **kwargs) -> Self:
+        """Insert a new row with auto-generated PK, return model instance."""
+        if not kwargs:
+            raise ValueError("create() requires at least one column value")
+        updatable = cls._updatable_columns()
+        for key in kwargs:
+            if key not in updatable:
+                raise ValueError(f"Unknown column: {key}")
+
+        columns = tuple(kwargs.keys())
+        placeholders = ", ".join("?" for _ in columns)
+        values = tuple(kwargs.values())
+        sql = (
+            f"INSERT INTO {cls._table} ({', '.join(columns)}) "
+            f"VALUES ({placeholders})"
+        )
+        cursor = await db.execute(sql, values)
+        await db.commit()
+        result = await cls.get(db, cursor.lastrowid)
+        assert result is not None
+        return result
+
+    @classmethod
     async def upsert(cls, db: aiosqlite.Connection, *pk_values, **kwargs) -> Self:
         """Insert or update a row, return full model instance."""
         updatable = cls._updatable_columns()
@@ -69,6 +92,27 @@ class Model:
 
         await db.execute(sql, values)
         await db.commit()
+        result = await cls.get(db, *pk_values)
+        assert result is not None
+        return result
+
+    @classmethod
+    async def update(cls, db: aiosqlite.Connection, *pk_values, **kwargs) -> Self:
+        """Update an existing row by primary key, return updated model instance."""
+        if not kwargs:
+            raise ValueError("update() requires at least one column value")
+        updatable = cls._updatable_columns()
+        for key in kwargs:
+            if key not in updatable:
+                raise ValueError(f"Unknown column: {key}")
+
+        set_clause = ", ".join(f"{col} = ?" for col in kwargs)
+        values = (*kwargs.values(), *pk_values)
+        sql = f"UPDATE {cls._table} SET {set_clause} WHERE {cls._pk_where()}"
+        cursor = await db.execute(sql, values)
+        await db.commit()
+        if cursor.rowcount == 0:
+            raise ValueError("Row not found")
         result = await cls.get(db, *pk_values)
         assert result is not None
         return result
