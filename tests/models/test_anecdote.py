@@ -141,9 +141,7 @@ async def test_delete_missing(db):
 async def test_fk_constraint_guild(db):
     """Creating anecdote for nonexistent guild fails."""
     with pytest.raises(aiosqlite.IntegrityError):
-        await Anecdote.create(
-            db, guild_id=999, author_id=1, target_id=2, content="Bad"
-        )
+        await Anecdote.create(db, guild_id=999, author_id=1, target_id=2, content="Bad")
 
 
 @pytest.mark.asyncio

@@ -50,10 +50,7 @@ class Model:
         columns = tuple(kwargs.keys())
         placeholders = ", ".join("?" for _ in columns)
         values = tuple(kwargs.values())
-        sql = (
-            f"INSERT INTO {cls._table} ({', '.join(columns)}) "
-            f"VALUES ({placeholders})"
-        )
+        sql = f"INSERT INTO {cls._table} ({', '.join(columns)}) VALUES ({placeholders})"
         cursor = await db.execute(sql, values)
         await db.commit()
         result = await cls.get(db, cursor.lastrowid)
