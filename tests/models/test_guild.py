@@ -37,6 +37,7 @@ async def test_upsert_creates_with_defaults(db):
     assert result.interval_days == 1
     assert result.publish_time == "15:00"
     assert result.days_off == ""
+    assert result.reveal_mode == "after-publish"
     assert result.reveal_interval_days == 1
     assert result.reveal_time == "13:30"
     assert result.leaderboard_reset_days == 0
@@ -70,6 +71,17 @@ async def test_get_after_upsert(db):
     assert result.guild_id == 123
     assert result.channel_id == 789
     assert result.publish_time == "10:00"
+
+
+@pytest.mark.asyncio
+async def test_upsert_updates_reveal_mode(db):
+    """Guild.upsert updates and persists reveal_mode."""
+    await Guild.upsert(db, 123)
+    result = await Guild.upsert(db, 123, reveal_mode="interval")
+    assert result.reveal_mode == "interval"
+    fetched = await Guild.get(db, 123)
+    assert fetched is not None
+    assert fetched.reveal_mode == "interval"
 
 
 @pytest.mark.asyncio
