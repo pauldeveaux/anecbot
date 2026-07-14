@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 
 
 def parse_days_off(days_off_str: str) -> set[int]:
@@ -27,3 +27,55 @@ def next_active_day(from_date: date, interval_days: int, days_off: set[int]) -> 
         if current.weekday() not in days_off:
             counted += 1
     return current
+
+
+def parse_time(time_str: str) -> time:
+    """Parse HH:MM string into a time object."""
+    h, m = time_str.strip().split(":")
+    return time(int(h), int(m))
+
+
+def next_publication_datetime(
+    last_published: datetime | None,
+    interval_days: int,
+    publish_time: str,
+    days_off: set[int],
+    now: datetime,
+) -> datetime:
+    """Return the next datetime when a publication should happen."""
+    pub_time = parse_time(publish_time)
+
+    if last_published is None:
+        today = now.date()
+        if today.weekday() not in days_off and now.time() < pub_time:
+            return datetime.combine(today, pub_time)
+        target = next_active_day(
+            today, 0 if today.weekday() in days_off else 1, days_off
+        )
+        return datetime.combine(target, pub_time)
+
+    target_date = next_active_day(last_published.date(), interval_days, days_off)
+    target_dt = datetime.combine(target_date, pub_time)
+
+    if target_dt <= now:
+        today = now.date()
+        if today.weekday() not in days_off and now.time() < pub_time:
+            return datetime.combine(today, pub_time)
+        target_date = next_active_day(
+            today, 0 if today.weekday() in days_off else 1, days_off
+        )
+        return datetime.combine(target_date, pub_time)
+
+    return target_dt
+
+
+def next_reveal_datetime(
+    published_at: datetime,
+    reveal_interval_days: int,
+    reveal_time: str,
+    days_off: set[int],
+) -> datetime:
+    """Return the datetime when a published anecdote should be revealed."""
+    rev_time = parse_time(reveal_time)
+    target_date = next_active_day(published_at.date(), reveal_interval_days, days_off)
+    return datetime.combine(target_date, rev_time)
