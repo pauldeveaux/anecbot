@@ -129,16 +129,12 @@ async def test_non_sql_files_are_ignored(migrations_dir):
 
 
 @pytest.mark.asyncio
-async def test_init_db_creates_file_and_runs_migrations(monkeypatch):
+async def test_init_db_creates_file_and_runs_migrations():
     """Test init_db creates the file, enables WAL and foreign keys, and runs migrations."""
     with tempfile.TemporaryDirectory() as tmp:
         db_path = str(Path(tmp) / "test.db")
-        migrations_path = str(
-            Path(__file__).resolve().parent.parent.parent / "migrations"
-        )
-        monkeypatch.setenv("DB_PATH", db_path)
-        monkeypatch.setenv("MIGRATIONS_DIR", migrations_path)
-        db = await init_db()
+        migrations_path = Path(__file__).resolve().parent.parent.parent / "migrations"
+        db = await init_db(db_path, migrations_path)
         try:
             assert Path(db_path).exists()
 

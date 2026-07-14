@@ -1,10 +1,12 @@
 import logging
+from pathlib import Path
 
 import aiosqlite
 import discord
 from discord import app_commands
 from discord.ext import commands
 
+from anecbot.config import Settings
 from anecbot.models.database import close_db, init_db
 
 logger = logging.getLogger(__name__)
@@ -16,7 +18,7 @@ class Bot(commands.Bot):
     db: aiosqlite.Connection
 
 
-def create_bot() -> Bot:
+def create_bot(settings: Settings) -> Bot:
     """Create and configure the Discord bot with database lifecycle hooks."""
     intents = discord.Intents.default()
     intents.members = True
@@ -36,7 +38,7 @@ def create_bot() -> Bot:
 
     async def setup_hook() -> None:
         """Initialize the database and load cogs before the bot starts receiving events."""
-        bot.db = await init_db()
+        bot.db = await init_db(settings.db_path, Path(settings.migrations_dir))
         logger.info("Database initialized")
         await bot.load_extension("anecbot.cogs")
         logger.info("Cogs loaded")

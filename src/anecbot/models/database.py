@@ -1,5 +1,4 @@
 import logging
-import os
 import re
 from pathlib import Path
 
@@ -57,11 +56,8 @@ async def run_migrations(db: aiosqlite.Connection, migrations_dir: Path) -> None
     logger.info("Database at version %d", final_version)
 
 
-async def init_db() -> aiosqlite.Connection:
+async def init_db(db_path: str, migrations_dir: Path) -> aiosqlite.Connection:
     """Open a SQLite connection with WAL mode, foreign keys, and run pending migrations."""
-    db_path = os.environ.get("DB_PATH", "data/anecbot.db")
-    migrations_dir = Path(os.environ.get("MIGRATIONS_DIR", "migrations"))
-
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     db = await aiosqlite.connect(db_path)
     await db.execute("PRAGMA journal_mode=WAL")
