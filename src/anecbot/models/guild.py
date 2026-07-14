@@ -16,6 +16,7 @@ class Guild(Model):
     interval_days: int = 1
     publish_time: str = "15:00"
     days_off: str = ""
+    reveal_mode: str = "after-publish"
     reveal_interval_days: int = 1
     reveal_time: str = "13:30"
     leaderboard_reset_days: int = 0
