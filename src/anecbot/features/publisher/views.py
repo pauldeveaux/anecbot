@@ -1,5 +1,7 @@
 import discord
 
+from anecbot.features.vote.service import record_vote
+from anecbot.models.enums import VoteResult
 from anecbot.models.player import Player
 from anecbot.utils.player import display_name
 
@@ -22,7 +24,15 @@ class McqView(discord.ui.View):
         self.add_item(self.select)
 
     async def _on_vote(self, interaction: discord.Interaction):
-        """Handle a vote — recording lands in ANEC-18."""
-        await interaction.response.send_message(
-            "🚧 Vote en cours de développement (ANEC-18).", ephemeral=True
-        )
+        """Record the vote and acknowledge, or reject if voting has closed."""
+        target_id = int(self.select.values[0])
+        db = interaction.client.db  # type: ignore[attr-defined]
+        result = await record_vote(db, self.anecdote_id, interaction.user.id, target_id)
+
+        if result == VoteResult.CLOSED:
+            await interaction.response.send_message(
+                "❌ Le vote pour cette anecdote est clos.", ephemeral=True
+            )
+            return
+
+        await interaction.response.send_message("✅ Vote enregistré !", ephemeral=True)

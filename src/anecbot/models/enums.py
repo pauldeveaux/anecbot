@@ -32,3 +32,10 @@ class LeaderboardResetMode(StrEnum):
     WEEKLY = "weekly"
     MONTHLY = "monthly"
     YEARLY = "yearly"
+
+
+class VoteResult(StrEnum):
+    """Outcome of attempting to record a vote."""
+
+    RECORDED = "recorded"
+    CLOSED = "closed"
