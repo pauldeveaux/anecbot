@@ -1,5 +1,6 @@
 import sys
 
+from discord import LoginFailure
 from pydantic import ValidationError
 
 from anecbot.bot import create_bot
@@ -19,4 +20,10 @@ except ValidationError as exc:
     )
 
 bot = create_bot(settings)
-bot.run(settings.discord_token)
+try:
+    bot.run(settings.discord_token)
+except LoginFailure:
+    sys.exit(
+        "Invalid Discord token. "
+        "Check DISCORD_TOKEN in your .env file."
+    )

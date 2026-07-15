@@ -1,6 +1,7 @@
 import discord
 
 from anecbot.cogs.admin.base import get_db
+from anecbot.models.enums import LeaderboardResetMode, RevealMode
 from anecbot.models.guild import Guild
 
 
@@ -24,10 +25,12 @@ class ConfigResetView(discord.ui.View):
             interval_days=1,
             publish_time="15:00",
             days_off="",
-            reveal_mode="after-publish",
+            reveal_mode=RevealMode.AFTER_PUBLISH,
             reveal_interval_days=1,
             reveal_time="13:30",
-            leaderboard_reset_days=0,
+            leaderboard_reset_mode=LeaderboardResetMode.NEVER,
+            leaderboard_reset_interval=1,
+            leaderboard_reset_anchor=None,
             daily_limit=0,
         )
         await interaction.response.edit_message(
