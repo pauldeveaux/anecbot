@@ -61,10 +61,8 @@ async def handle(
         ephemeral=True,
     )
 
+    if role == PlayerRole.TARGET:
+        return
+
     guild_name = interaction.guild.name if interaction.guild else "le serveur"
-    dm_label = (
-        "envoyer des anecdotes" if role == PlayerRole.SUBMITTER else "être la cible"
-    )
-    if role == PlayerRole.ALL:
-        dm_label = "envoyer et être la cible"
-    await send_dm(user, guild_name, dm_label)
+    await send_dm(user, guild_name, "envoyer des anecdotes")
