@@ -7,6 +7,7 @@ from anecbot.features.player.service import (
     is_active_submitter,
 )
 from anecbot.models.player import Player
+from anecbot.shared.views.guild_select import GuildSelectView
 from anecbot.utils.player import display_name
 
 
@@ -53,25 +54,9 @@ class TargetSelectView(discord.ui.View):
         await interaction.response.send_modal(modal)
 
 
-class ServerSelectView(discord.ui.View):
-    """Select menu to choose the server (DM with multiple guilds)."""
-
-    def __init__(self, guilds: list[tuple[int, str]]):
-        super().__init__(timeout=120)
-        options = [
-            discord.SelectOption(label=name, value=str(gid)) for gid, name in guilds
-        ]
-        self.select = discord.ui.Select(
-            placeholder="Choisis le serveur",
-            options=options,
-        )
-        self.select.callback = self._on_select
-        self.add_item(self.select)
-
-    async def _on_select(self, interaction: discord.Interaction):
-        """Handle server selection — check submitter status, then show target select."""
-        guild_id = int(self.select.values[0])
-        await _show_targets_or_error(interaction, guild_id, edit=True)
+async def _on_guild_selected(interaction: discord.Interaction, guild_id: int) -> None:
+    """Handle server selection — check submitter status, then show target select."""
+    await _show_targets_or_error(interaction, guild_id, edit=True)
 
 
 async def _show_targets_or_error(
@@ -182,7 +167,7 @@ async def handle(interaction: discord.Interaction):
         await _show_targets_or_error(interaction, guild_id, edit=False)
         return
 
-    view = ServerSelectView(guilds)
+    view = GuildSelectView(guilds, _on_guild_selected)
     await interaction.response.send_message(
         "Choisis le serveur :",
         view=view,

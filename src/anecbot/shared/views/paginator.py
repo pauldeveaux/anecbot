@@ -3,8 +3,72 @@ import discord
 ITEMS_PER_PAGE = 20
 
 
-class PaginatedView(discord.ui.View):
-    """Generic paginated embed view with navigation buttons."""
+class NavigablePagesView(discord.ui.View):
+    """Base view for browsing pages with first/previous/next/last controls.
+
+    Subclasses must implement `total_pages` and `build_embed()`.
+    """
+
+    def __init__(self, timeout: float = 120):
+        super().__init__(timeout=timeout)
+        self.page = 0
+        self.sync_nav_buttons()
+
+    @property
+    def total_pages(self) -> int:
+        """Return the total number of pages."""
+        raise NotImplementedError
+
+    def build_embed(self) -> discord.Embed:
+        """Build the embed for the current page."""
+        raise NotImplementedError
+
+    def sync_nav_buttons(self):
+        """Enable/disable navigation buttons based on the current page."""
+        at_first = self.page == 0
+        at_last = self.page >= self.total_pages - 1
+        self.first_button.disabled = at_first
+        self.prev_button.disabled = at_first
+        self.next_button.disabled = at_last
+        self.last_button.disabled = at_last
+
+    async def _go_to(self, interaction: discord.Interaction, page: int):
+        """Move to the given page and refresh the message."""
+        self.page = page
+        self.sync_nav_buttons()
+        await interaction.response.edit_message(embed=self.build_embed(), view=self)
+
+    @discord.ui.button(label="⏮", style=discord.ButtonStyle.secondary, row=0)
+    async def first_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
+        """Jump to the first page."""
+        await self._go_to(interaction, 0)
+
+    @discord.ui.button(label="◀", style=discord.ButtonStyle.secondary, row=0)
+    async def prev_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
+        """Go to the previous page."""
+        await self._go_to(interaction, self.page - 1)
+
+    @discord.ui.button(label="▶", style=discord.ButtonStyle.secondary, row=0)
+    async def next_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
+        """Go to the next page."""
+        await self._go_to(interaction, self.page + 1)
+
+    @discord.ui.button(label="⏭", style=discord.ButtonStyle.secondary, row=0)
+    async def last_button(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
+        """Jump to the last page."""
+        await self._go_to(interaction, self.total_pages - 1)
+
+
+class PaginatedView(NavigablePagesView):
+    """Paginated embed view showing a slice of text lines per page."""
 
     def __init__(
         self,
@@ -13,13 +77,11 @@ class PaginatedView(discord.ui.View):
         color: discord.Color = discord.Color.blue(),
         per_page: int = ITEMS_PER_PAGE,
     ):
-        super().__init__(timeout=120)
         self.items = items
         self.title = title
         self.color = color
         self.per_page = per_page
-        self.page = 0
-        self._update_buttons()
+        super().__init__(timeout=120)
 
     @property
     def total_pages(self) -> int:
@@ -38,26 +100,3 @@ class PaginatedView(discord.ui.View):
             description="\n".join(page_items),
             color=self.color,
         ).set_footer(text=footer)
-
-    def _update_buttons(self):
-        """Enable/disable buttons based on current page."""
-        self.prev_button.disabled = self.page == 0
-        self.next_button.disabled = self.page >= self.total_pages - 1
-
-    @discord.ui.button(label="◀", style=discord.ButtonStyle.secondary)
-    async def prev_button(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ):
-        """Go to previous page."""
-        self.page -= 1
-        self._update_buttons()
-        await interaction.response.edit_message(embed=self.build_embed(), view=self)
-
-    @discord.ui.button(label="▶", style=discord.ButtonStyle.secondary)
-    async def next_button(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ):
-        """Go to next page."""
-        self.page += 1
-        self._update_buttons()
-        await interaction.response.edit_message(embed=self.build_embed(), view=self)
