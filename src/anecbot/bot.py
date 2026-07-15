@@ -28,10 +28,11 @@ def create_bot(settings: Settings) -> Bot:
 
     @bot.event
     async def on_ready():
-        """Sync command tree per guild and log connection status."""
+        """Sync command tree globally and clear stale guild-specific commands."""
         for guild in bot.guilds:
-            bot.tree.copy_global_to(guild=guild)
+            bot.tree.clear_commands(guild=guild)
             await bot.tree.sync(guild=guild)
+        await bot.tree.sync()
         logger.info(
             "Logged in as %s (guilds: %d, commands synced)", bot.user, len(bot.guilds)
         )
