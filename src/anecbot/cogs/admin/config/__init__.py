@@ -2,25 +2,21 @@ import discord
 from discord import app_commands
 
 from anecbot.cogs.admin.base import AdminCog
-from anecbot.cogs.admin.config import channel as channel_handler
-from anecbot.cogs.admin.config import daily_limit as daily_limit_handler
-from anecbot.cogs.admin.config import days_off as days_off_handler
-from anecbot.cogs.admin.config import interval as interval_handler
 from anecbot.cogs.admin.config import (
-    leaderboard_reset_anchor as leaderboard_reset_anchor_handler,
+    channel as channel_config,
+    daily_limit,
+    days_off,
+    interval,
+    leaderboard_reset_anchor,
+    leaderboard_reset_interval,
+    leaderboard_reset_mode,
+    publish_time,
+    reset,
+    reveal_interval,
+    reveal_mode,
+    reveal_time,
+    show,
 )
-from anecbot.cogs.admin.config import (
-    leaderboard_reset_interval as leaderboard_reset_interval_handler,
-)
-from anecbot.cogs.admin.config import (
-    leaderboard_reset_mode as leaderboard_reset_mode_handler,
-)
-from anecbot.cogs.admin.config import publish_time as publish_time_handler
-from anecbot.cogs.admin.config import reset as reset_handler
-from anecbot.cogs.admin.config import reveal_interval as reveal_interval_handler
-from anecbot.cogs.admin.config import reveal_mode as reveal_mode_handler
-from anecbot.cogs.admin.config import reveal_time as reveal_time_handler
-from anecbot.cogs.admin.config import show as show_handler
 from anecbot.models.enums import LeaderboardResetMode, RevealMode
 
 
@@ -35,7 +31,7 @@ class ConfigCog(AdminCog):
         self, interaction: discord.Interaction, channel: discord.TextChannel
     ):
         """Set the quiz channel."""
-        await channel_handler.handle(interaction, channel)
+        await channel_config.handle(interaction, channel)
 
     @config.command(
         name="interval",
@@ -44,7 +40,7 @@ class ConfigCog(AdminCog):
     @app_commands.describe(jours="Nombre de jours actifs entre chaque publication")
     async def config_interval(self, interaction: discord.Interaction, jours: int):
         """Set the publication interval in active days."""
-        await interval_handler.handle(interaction, jours)
+        await interval.handle(interaction, jours)
 
     @config.command(
         name="publish-time",
@@ -53,7 +49,7 @@ class ConfigCog(AdminCog):
     @app_commands.describe(heure="Heure de publication au format HH:MM")
     async def config_publish_time(self, interaction: discord.Interaction, heure: str):
         """Set the publication time."""
-        await publish_time_handler.handle(interaction, heure)
+        await publish_time.handle(interaction, heure)
 
     @config.command(
         name="days-off",
@@ -65,7 +61,7 @@ class ConfigCog(AdminCog):
     )
     async def config_days_off(self, interaction: discord.Interaction, jours: str = ""):
         """Set the days off."""
-        await days_off_handler.handle(interaction, jours)
+        await days_off.handle(interaction, jours)
 
     @config.command(
         name="reveal-mode",
@@ -75,14 +71,14 @@ class ConfigCog(AdminCog):
     @app_commands.choices(
         mode=[
             app_commands.Choice(name=label, value=mode.value)
-            for mode, label in reveal_mode_handler.MODE_LABELS.items()
+            for mode, label in reveal_mode.MODE_LABELS.items()
         ]
     )
     async def config_reveal_mode(
         self, interaction: discord.Interaction, mode: RevealMode
     ):
         """Set the reveal mode."""
-        await reveal_mode_handler.handle(interaction, mode)
+        await reveal_mode.handle(interaction, mode)
 
     @config.command(
         name="reveal-interval",
@@ -93,7 +89,7 @@ class ConfigCog(AdminCog):
         self, interaction: discord.Interaction, jours: int
     ):
         """Set the reveal interval in active days."""
-        await reveal_interval_handler.handle(interaction, jours)
+        await reveal_interval.handle(interaction, jours)
 
     @config.command(
         name="reveal-time",
@@ -102,7 +98,7 @@ class ConfigCog(AdminCog):
     @app_commands.describe(heure="Heure de révélation au format HH:MM")
     async def config_reveal_time(self, interaction: discord.Interaction, heure: str):
         """Set the reveal time."""
-        await reveal_time_handler.handle(interaction, heure)
+        await reveal_time.handle(interaction, heure)
 
     @config.command(
         name="leaderboard-reset-frequency",
@@ -112,14 +108,14 @@ class ConfigCog(AdminCog):
     @app_commands.choices(
         mode=[
             app_commands.Choice(name=label, value=mode.value)
-            for mode, label in leaderboard_reset_mode_handler.MODE_LABELS.items()
+            for mode, label in leaderboard_reset_mode.MODE_LABELS.items()
         ]
     )
     async def config_leaderboard_reset_mode(
         self, interaction: discord.Interaction, mode: LeaderboardResetMode
     ):
         """Set the leaderboard reset cadence unit."""
-        await leaderboard_reset_mode_handler.handle(interaction, mode)
+        await leaderboard_reset_mode.handle(interaction, mode)
 
     @config.command(
         name="leaderboard-every",
@@ -132,7 +128,7 @@ class ConfigCog(AdminCog):
         self, interaction: discord.Interaction, n: int
     ):
         """Set the leaderboard reset interval count."""
-        await leaderboard_reset_interval_handler.handle(interaction, n)
+        await leaderboard_reset_interval.handle(interaction, n)
 
     @config.command(
         name="leaderboard-reset-day",
@@ -146,7 +142,7 @@ class ConfigCog(AdminCog):
         self, interaction: discord.Interaction, n: int
     ):
         """Set the leaderboard reset anchor."""
-        await leaderboard_reset_anchor_handler.handle(interaction, n)
+        await leaderboard_reset_anchor.handle(interaction, n)
 
     @config.command(
         name="daily-limit",
@@ -157,7 +153,7 @@ class ConfigCog(AdminCog):
     )
     async def config_daily_limit(self, interaction: discord.Interaction, n: int):
         """Set the daily submission limit per person."""
-        await daily_limit_handler.handle(interaction, n)
+        await daily_limit.handle(interaction, n)
 
     @config.command(
         name="show",
@@ -165,7 +161,7 @@ class ConfigCog(AdminCog):
     )
     async def config_show(self, interaction: discord.Interaction):
         """Show the current configuration."""
-        await show_handler.handle(interaction)
+        await show.handle(interaction)
 
     @config.command(
         name="reset",
@@ -173,4 +169,4 @@ class ConfigCog(AdminCog):
     )
     async def config_reset(self, interaction: discord.Interaction):
         """Reset configuration to defaults."""
-        await reset_handler.handle(interaction)
+        await reset.handle(interaction)
