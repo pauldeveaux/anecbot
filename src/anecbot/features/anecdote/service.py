@@ -28,14 +28,16 @@ async def create_anecdote(
     target_id: int,
     content: str,
 ) -> Anecdote:
-    """Create a new anecdote in PENDING state."""
-    return await Anecdote.create(
+    """Create a new anecdote in PENDING state and clear the empty-queue warning flag."""
+    anecdote = await Anecdote.create(
         db,
         guild_id=guild_id,
         author_id=author_id,
         target_id=target_id,
         content=content,
     )
+    await Guild.update(db, guild_id, queue_empty_warned=0)
+    return anecdote
 
 
 async def get_pending_by_author(
