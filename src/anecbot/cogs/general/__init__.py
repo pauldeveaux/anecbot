@@ -3,6 +3,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from anecbot.cogs.general import help as help_handler
+from anecbot.cogs.general import stats as stats_handler
 
 
 class GeneralCog(commands.Cog):
@@ -15,6 +16,11 @@ class GeneralCog(commands.Cog):
     async def help(self, interaction: discord.Interaction):
         """Show help guide."""
         await help_handler.handle(interaction)
+
+    @app_commands.command(name="stats", description="Afficher les statistiques du jeu")
+    async def stats(self, interaction: discord.Interaction):
+        """Show game statistics."""
+        await stats_handler.handle(interaction)
 
 
 async def setup(bot):

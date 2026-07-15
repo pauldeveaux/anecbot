@@ -25,3 +25,4 @@ class Guild(Model):
     leaderboard_reset_anchor: int | None = None
     daily_limit: int = 0
     started: int = 0
+    started_at: str | None = None

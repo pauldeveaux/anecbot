@@ -121,9 +121,7 @@ class ConfigCog(AdminCog):
         name="leaderboard-every",
         description="Définir tous les combien le leaderboard est réinitialisé",
     )
-    @app_commands.describe(
-        n="Tous les N (jours/semaines/mois/ans)"
-    )
+    @app_commands.describe(n="Tous les N (jours/semaines/mois/ans)")
     async def config_leaderboard_reset_interval(
         self, interaction: discord.Interaction, n: int
     ):

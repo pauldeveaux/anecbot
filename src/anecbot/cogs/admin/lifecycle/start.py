@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 import discord
 
 from anecbot.cogs.admin.base import get_db
@@ -16,9 +18,13 @@ class StartConfirmView(discord.ui.View):
     async def confirm(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
-        """Start the game."""
+        """Start the game, recording the first start timestamp."""
         db = get_db(interaction)
-        await Guild.upsert(db, self.guild_id, started=1)
+        guild = await Guild.get(db, self.guild_id)
+        kwargs: dict[str, object] = {"started": 1}
+        if guild is None or guild.started_at is None:
+            kwargs["started_at"] = datetime.now(timezone.utc).isoformat()
+        await Guild.upsert(db, self.guild_id, **kwargs)
         await interaction.response.edit_message(
             content="✅ Jeu démarré ! Les publications commenceront selon la configuration.",
             view=None,
