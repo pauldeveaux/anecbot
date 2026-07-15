@@ -8,8 +8,10 @@ from anecbot.features.anecdote.service import (
     create_anecdote,
     daily_limit_status,
     delete_anecdote,
+    discard_pending_anecdotes,
     get_owned_pending_anecdote,
     get_pending_by_author,
+    player_has_anecdotes,
     update_content,
 )
 from anecbot.models.anecdote import Anecdote
@@ -245,3 +247,81 @@ async def test_get_owned_pending_anecdote_none_when_not_pending(db, players):
     await Anecdote.update(db, anecdote.id, state="PUBLISHED")
 
     assert await get_owned_pending_anecdote(db, anecdote.id, AUTHOR_ID) is None
+
+
+@pytest.mark.asyncio
+async def test_player_has_anecdotes_false_when_none(db, players):
+    """Returns False when the user has no anecdotes as author or target."""
+    assert await player_has_anecdotes(db, GUILD_ID, AUTHOR_ID) is False
+
+
+@pytest.mark.asyncio
+async def test_player_has_anecdotes_true_as_author(db, players):
+    """Returns True when the user authored an anecdote, regardless of its state."""
+    anecdote = await Anecdote.create(
+        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
+    )
+    await Anecdote.update(db, anecdote.id, state="REVEALED")
+
+    assert await player_has_anecdotes(db, GUILD_ID, AUTHOR_ID) is True
+
+
+@pytest.mark.asyncio
+async def test_player_has_anecdotes_true_as_target(db, players):
+    """Returns True when the user is the target of an anecdote."""
+    await Anecdote.create(
+        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
+    )
+
+    assert await player_has_anecdotes(db, GUILD_ID, TARGET_ID) is True
+
+
+@pytest.mark.asyncio
+async def test_player_has_anecdotes_ignores_other_guilds(db, players):
+    """Only counts anecdotes in the given guild."""
+    other_guild = 200
+    await Guild.upsert(db, other_guild)
+    await Player.upsert(db, other_guild, AUTHOR_ID, can_submit=1)
+    await Player.upsert(db, other_guild, TARGET_ID, can_be_target=1)
+    await Anecdote.create(
+        db, guild_id=other_guild, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
+    )
+
+    assert await player_has_anecdotes(db, GUILD_ID, AUTHOR_ID) is False
+
+
+@pytest.mark.asyncio
+async def test_discard_pending_anecdotes_removes_only_pending(db, players):
+    """Only the author's PENDING anecdotes are deleted, published/revealed ones are kept."""
+    pending = await Anecdote.create(
+        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="P"
+    )
+    published = await Anecdote.create(
+        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="Q"
+    )
+    await Anecdote.update(db, published.id, state="PUBLISHED")
+
+    count = await discard_pending_anecdotes(db, GUILD_ID, AUTHOR_ID)
+
+    assert count == 1
+    assert await Anecdote.get(db, pending.id) is None
+    assert await Anecdote.get(db, published.id) is not None
+
+
+@pytest.mark.asyncio
+async def test_discard_pending_anecdotes_ignores_where_only_target(db, players):
+    """Anecdotes where the user is only the target (not author) are left untouched."""
+    anecdote = await Anecdote.create(
+        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
+    )
+
+    count = await discard_pending_anecdotes(db, GUILD_ID, TARGET_ID)
+
+    assert count == 0
+    assert await Anecdote.get(db, anecdote.id) is not None
+
+
+@pytest.mark.asyncio
+async def test_discard_pending_anecdotes_returns_zero_when_none(db, players):
+    """Returns 0 when the author has no PENDING anecdotes."""
+    assert await discard_pending_anecdotes(db, GUILD_ID, AUTHOR_ID) == 0

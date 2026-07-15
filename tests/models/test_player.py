@@ -4,6 +4,7 @@ import aiosqlite
 import pytest
 import pytest_asyncio
 
+from anecbot.models.anecdote import Anecdote
 from anecbot.models.database import run_migrations
 from anecbot.models.guild import Guild
 from anecbot.models.player import Player
@@ -124,3 +125,19 @@ async def test_cascade_delete_guild(db, guild):
     await Guild.delete(db, 100)
     players = await Player.list(db, guild_id=100)
     assert len(players) == 0
+
+
+@pytest.mark.asyncio
+async def test_delete_fails_when_referenced_by_anecdote(db, guild):
+    """Deleting a player still referenced by an anecdote raises IntegrityError.
+
+    There's no ON DELETE CASCADE from anecdotes to players (by design — leaving a
+    guild shouldn't erase anecdote history), so callers must check for existing
+    anecdotes (features.anecdote.service.player_has_anecdotes) before deleting.
+    """
+    await Player.upsert(db, 100, 1)
+    await Player.upsert(db, 100, 2)
+    await Anecdote.create(db, guild_id=100, author_id=1, target_id=2, content="x")
+
+    with pytest.raises(aiosqlite.IntegrityError):
+        await Player.delete(db, 100, 1)

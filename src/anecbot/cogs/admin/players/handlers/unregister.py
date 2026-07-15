@@ -3,6 +3,10 @@ import logging
 import discord
 
 from anecbot.cogs.admin.base import get_db
+from anecbot.features.anecdote.service import (
+    discard_pending_anecdotes,
+    player_has_anecdotes,
+)
 from anecbot.models.enums import PlayerRole
 from anecbot.models.player import Player
 
@@ -27,24 +31,20 @@ async def handle(
     guild_name = interaction.guild.name if interaction.guild else "le serveur"
 
     if role is None:
-        if existing.banned_submit or existing.banned_target:
-            await Player.update(
-                db,
-                interaction.guild_id,
-                user.id,
-                can_submit=0,
-                can_be_target=0,
-            )
-            await interaction.response.send_message(
-                f"✅ Rôles retirés pour {user.mention} (le ban reste actif).",
-                ephemeral=True,
-            )
+        has_ban = existing.banned_submit or existing.banned_target
+        await Player.update(
+            db, interaction.guild_id, user.id, can_submit=0, can_be_target=0
+        )
+        if not has_ban:
+            await discard_pending_anecdotes(db, interaction.guild_id, user.id)
+            if not await player_has_anecdotes(db, interaction.guild_id, user.id):
+                await Player.delete(db, interaction.guild_id, user.id)
+
+        if has_ban:
+            msg = f"✅ Rôles retirés pour {user.mention} (le ban reste actif)."
         else:
-            await Player.delete(db, interaction.guild_id, user.id)
-            await interaction.response.send_message(
-                f"✅ {user.mention} a été désinscrit(e).",
-                ephemeral=True,
-            )
+            msg = f"✅ {user.mention} a été désinscrit(e)."
+        await interaction.response.send_message(msg, ephemeral=True)
         await _notify_user(user, guild_name, "désinscrit(e)")
         return
 
@@ -63,7 +63,9 @@ async def handle(
         and not updated.banned_submit
         and not updated.banned_target
     ):
-        await Player.delete(db, interaction.guild_id, user.id)
+        await discard_pending_anecdotes(db, interaction.guild_id, user.id)
+        if not await player_has_anecdotes(db, interaction.guild_id, user.id):
+            await Player.delete(db, interaction.guild_id, user.id)
 
     await interaction.response.send_message(
         f"✅ {user.mention} n'est plus {label}.",
