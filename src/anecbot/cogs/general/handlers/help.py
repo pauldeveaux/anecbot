@@ -27,17 +27,29 @@ ADMIN_GUIDE = (
     "- `/ban <user> [role]` / `/unban <user> [role]` — bannir / débannir\n"
     "- `/players [filtre]` — lister les joueurs (rédacteurs/cibles/bannis)\n\n"
     "**3. Collecter les anecdotes**\n"
-    "- Les joueurs inscrits envoient leurs anecdotes en DM au bot\n\n"
+    "- Les joueurs inscrits utilisent `/anecdote submit` en DM au bot\n\n"
     "**4. Démarrer le jeu**\n"
     "- `/start` — lancer les publications automatiques\n"
     "- `/stop` — mettre en pause\n"
     "- `/reset` — tout supprimer et recommencer\n\n"
 )
 
+DM_GUIDE = (
+    "## 👤 Comment jouer\n\n"
+    "**Soumettre une anecdote**\n"
+    "- `/anecdote submit` — envoyer une anecdote\n\n"
+    "**Inscription**\n"
+    "- `/leave [role]` — se désinscrire d'un rôle ou complètement\n\n"
+    "Les commandes suivantes sont disponibles **sur le serveur** :\n"
+    "- `/stats` — statistiques du jeu\n"
+    "- `/next` — prochains événements\n"
+    "- `/leaderboard` — classement\n"
+)
+
 USER_GUIDE = (
     "## 👤 Comment jouer\n\n"
     "**Soumettre une anecdote**\n"
-    "Envoie un message privé au bot pour proposer une anecdote.\n\n"
+    "- `/anecdote submit` — envoyer une anecdote (en DM)\n\n"
     "**Voter**\n"
     "Quand une anecdote est publiée, réponds au QCM pour deviner "
     "à qui elle correspond.\n\n"
@@ -53,10 +65,10 @@ USER_GUIDE = (
 
 
 async def handle(interaction: discord.Interaction):
-    """Show help guide adapted to user role."""
-    is_admin = interaction.user.guild_permissions.administrator  # type: ignore[union-attr]
-
-    if is_admin:
+    """Show help guide adapted to context and role."""
+    if interaction.guild is None:
+        content = DM_GUIDE
+    elif interaction.user.guild_permissions.administrator:  # type: ignore[union-attr]
         content = ADMIN_GUIDE + USER_GUIDE
     else:
         content = USER_GUIDE

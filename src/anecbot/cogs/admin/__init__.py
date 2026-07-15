@@ -13,4 +13,5 @@ async def setup(bot):
     for cog in cogs:
         for cmd in cog.walk_app_commands():
             cmd.default_permissions = _ADMIN_PERMS
+            cmd.guild_only = True
         await bot.add_cog(cog)
