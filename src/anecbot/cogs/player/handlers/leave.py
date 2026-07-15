@@ -1,5 +1,9 @@
 import discord
 
+from anecbot.features.anecdote.service import (
+    discard_pending_anecdotes,
+    player_has_anecdotes,
+)
 from anecbot.models.enums import PlayerRole
 from anecbot.models.player import Player
 
@@ -85,7 +89,9 @@ async def _do_leave(
         and not updated.banned_submit
         and not updated.banned_target
     ):
-        await Player.delete(db, guild_id, interaction.user.id)
+        await discard_pending_anecdotes(db, guild_id, interaction.user.id)
+        if not await player_has_anecdotes(db, guild_id, interaction.user.id):
+            await Player.delete(db, guild_id, interaction.user.id)
 
     msg = f"✅ Tu as quitté : {label}."
     if edit:

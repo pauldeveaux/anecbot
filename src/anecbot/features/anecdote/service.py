@@ -1,6 +1,10 @@
 import aiosqlite
 
-from anecbot.features.anecdote.repository import count_created_today
+from anecbot.features.anecdote.repository import (
+    count_created_today,
+    delete_pending_by_author,
+    has_any_for_user,
+)
 from anecbot.models.anecdote import Anecdote
 from anecbot.models.guild import Guild
 
@@ -68,3 +72,17 @@ async def update_content(
 async def delete_anecdote(db: aiosqlite.Connection, anecdote_id: int) -> bool:
     """Delete an anecdote, return True if it existed."""
     return await Anecdote.delete(db, anecdote_id)
+
+
+async def player_has_anecdotes(
+    db: aiosqlite.Connection, guild_id: int, user_id: int
+) -> bool:
+    """Return whether the player has any anecdotes referencing them as author or target."""
+    return await has_any_for_user(db, guild_id, user_id)
+
+
+async def discard_pending_anecdotes(
+    db: aiosqlite.Connection, guild_id: int, author_id: int
+) -> int:
+    """Delete the author's own PENDING anecdotes (e.g. when they leave), return count deleted."""
+    return await delete_pending_by_author(db, guild_id, author_id)
