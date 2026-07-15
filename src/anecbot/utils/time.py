@@ -1,5 +1,20 @@
 from datetime import date, datetime, time, timedelta
 
+DISCORD_FULL = "f"
+DISCORD_RELATIVE = "R"
+DISCORD_SHORT_DATE = "d"
+DISCORD_LONG_DATE = "D"
+DISCORD_SHORT_TIME = "t"
+DISCORD_LONG_TIME = "T"
+DISCORD_SHORT_DATETIME = "f"
+DISCORD_LONG_DATETIME = "F"
+
+
+def discord_timestamp(iso: str, style: str = DISCORD_FULL) -> str:
+    """Format an ISO datetime as a Discord timestamp tag (localized per user)."""
+    dt = datetime.fromisoformat(iso)
+    return f"<t:{int(dt.timestamp())}:{style}>"
+
 
 def parse_days_off(days_off_str: str) -> set[int]:
     """Parse comma-separated weekday numbers (0=Mon, 6=Sun) into a set."""

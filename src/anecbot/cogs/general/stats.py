@@ -1,14 +1,7 @@
-from datetime import datetime
-
 import discord
 
 from anecbot.services.stats import GuildStats, get_guild_stats
-
-
-def _format_datetime(iso: str) -> str:
-    """Format an ISO datetime string for display."""
-    dt = datetime.fromisoformat(iso)
-    return dt.strftime("%d/%m/%Y à %H:%M")
+from anecbot.utils.time import discord_timestamp
 
 
 def build_stats_embed(stats: GuildStats) -> discord.Embed:
@@ -23,7 +16,7 @@ def build_stats_embed(stats: GuildStats) -> discord.Embed:
 
     started_value = f"{state_emoji} {state_label}"
     if stats.started_at:
-        started_value += f"\nDepuis le {_format_datetime(stats.started_at)}"
+        started_value += f"\nDepuis le {discord_timestamp(stats.started_at)}"
     embed.add_field(name="État", value=started_value, inline=False)
 
     embed.add_field(
