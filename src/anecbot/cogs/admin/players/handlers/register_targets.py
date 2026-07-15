@@ -12,13 +12,14 @@ from anecbot.cogs.admin.players.handlers.registration import (
 from anecbot.models.guild import Guild
 from anecbot.models.player import Player
 
-CUSTOM_ID_PREFIX = "register_submitters"
+CUSTOM_ID_PREFIX = "register_targets"
 
 
-class RegisterSubmittersView(discord.ui.View):
-    """Persistent view with a registration button for submitters."""
+class RegisterTargetsView(discord.ui.View):
+    """Persistent view with a registration button for targets."""
 
     def __init__(self, required_role_id: int | None = None):
+        """Initialize with optional role gate."""
         super().__init__(timeout=None)
         self.button = discord.ui.Button(
             label="S'inscrire",
@@ -42,34 +43,36 @@ class RegisterSubmittersView(discord.ui.View):
         db = get_db(interaction)
         existing = await Player.get(db, interaction.guild_id, interaction.user.id)
 
-        if not await check_banned(interaction, existing, "banned_submit"):
+        if not await check_banned(interaction, existing, "banned_target"):
             return
 
-        if existing and existing.can_submit:
+        if existing and existing.can_be_target:
             await interaction.response.send_message(
-                "ℹ️ Tu peux déjà envoyer des anecdotes.",
+                "ℹ️ Tu es déjà inscrit(e) comme cible.",
                 ephemeral=True,
             )
             return
 
         await Guild.upsert(db, interaction.guild_id)
-        await Player.upsert(db, interaction.guild_id, interaction.user.id, can_submit=1)
+        await Player.upsert(
+            db, interaction.guild_id, interaction.user.id, can_be_target=1
+        )
         await interaction.response.send_message(
-            "✅ Inscription réussie ! Tu peux maintenant soumettre des anecdotes en DM.",
+            "✅ Inscription réussie ! Tu es maintenant une cible.",
             ephemeral=True,
         )
 
         guild_name = interaction.guild.name if interaction.guild else "le serveur"
-        await send_dm(interaction.user, guild_name, "envoyer des anecdotes")
+        await send_dm(interaction.user, guild_name, "être la cible")
 
 
 async def handle(interaction: discord.Interaction, role: discord.Role | None = None):
-    """Post the submitter registration embed with a persistent button."""
+    """Post the target registration embed with a persistent button."""
     assert interaction.guild_id is not None
     embed = build_registration_embed(
-        title="Inscription — Soumettre des anecdotes",
-        description="Clique sur le bouton ci-dessous pour commencer à envoyer des anecdotes !",
+        title="Inscription — Cible d'anecdotes",
+        description="Clique sur le bouton ci-dessous pour devenir une cible !",
         role=role,
     )
-    view = RegisterSubmittersView(required_role_id=role.id if role else None)
+    view = RegisterTargetsView(required_role_id=role.id if role else None)
     await interaction.response.send_message(embed=embed, view=view)

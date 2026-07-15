@@ -17,4 +17,6 @@ class Player(Model):
     can_be_target: int = 0
     alias: str | None = None
     suspended: int = 0
+    banned_submit: int = 0
+    banned_target: int = 0
     registered_at: str = ""
