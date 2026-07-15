@@ -1,14 +1,16 @@
 import discord
 
 from anecbot.cogs.admin.base import get_db
-from anecbot.cogs.admin.config.leaderboard_reset_format import (
+from anecbot.cogs.admin.config.handlers.leaderboard_reset_format import (
     format_leaderboard_reset_anchor,
     format_leaderboard_reset_interval,
 )
-from anecbot.cogs.admin.config.leaderboard_reset_mode import (
+from anecbot.cogs.admin.config.handlers.leaderboard_reset_mode import (
     MODE_LABELS as LEADERBOARD_RESET_MODE_LABELS,
 )
-from anecbot.cogs.admin.config.reveal_mode import MODE_LABELS as REVEAL_MODE_LABELS
+from anecbot.cogs.admin.config.handlers.reveal_mode import (
+    MODE_LABELS as REVEAL_MODE_LABELS,
+)
 from anecbot.models.enums import LeaderboardResetMode
 from anecbot.models.guild import Guild
 

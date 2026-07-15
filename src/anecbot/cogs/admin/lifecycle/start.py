@@ -1,7 +1,7 @@
 import discord
 
 from anecbot.cogs.admin.base import get_db
-from anecbot.cogs.admin.config.show import build_config_embed
+from anecbot.cogs.admin.config.handlers.show import build_config_embed
 from anecbot.models.guild import Guild
 
 

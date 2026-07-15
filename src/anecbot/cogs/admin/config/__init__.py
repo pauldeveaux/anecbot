@@ -2,8 +2,8 @@ import discord
 from discord import app_commands
 
 from anecbot.cogs.admin.base import AdminCog
-from anecbot.cogs.admin.config import (
-    channel as channel_config,
+from anecbot.cogs.admin.config.handlers import (
+    channel as channel_handler,
     daily_limit,
     days_off,
     interval,
@@ -31,7 +31,7 @@ class ConfigCog(AdminCog):
         self, interaction: discord.Interaction, channel: discord.TextChannel
     ):
         """Set the quiz channel."""
-        await channel_config.handle(interaction, channel)
+        await channel_handler.handle(interaction, channel)
 
     @config.command(
         name="interval",
