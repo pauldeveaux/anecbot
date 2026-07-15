@@ -1,4 +1,4 @@
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 
 DISCORD_FULL = "f"
 DISCORD_RELATIVE = "R"
@@ -8,6 +8,17 @@ DISCORD_SHORT_TIME = "t"
 DISCORD_LONG_TIME = "T"
 DISCORD_SHORT_DATETIME = "f"
 DISCORD_LONG_DATETIME = "F"
+
+
+def utcnow() -> datetime:
+    """Return the current UTC time as a naive datetime."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def discord_timestamp_full_relative(dt: datetime) -> str:
+    """Format a datetime as Discord full + relative timestamps on two lines."""
+    unix = int(dt.timestamp())
+    return f"<t:{unix}:{DISCORD_FULL}>\n<t:{unix}:{DISCORD_RELATIVE}>"
 
 
 def discord_timestamp(iso: str, style: str = DISCORD_FULL) -> str:

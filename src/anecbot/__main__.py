@@ -4,8 +4,8 @@ from discord import LoginFailure
 from pydantic import ValidationError
 
 from anecbot.bot import create_bot
-from anecbot.config import Settings
-from anecbot.logging import setup_logging
+from anecbot.utils.config import Settings
+from anecbot.utils.logging import setup_logging
 
 setup_logging()
 

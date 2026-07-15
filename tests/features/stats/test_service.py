@@ -7,9 +7,9 @@ import pytest_asyncio
 from anecbot.models.database import run_migrations
 from anecbot.models.guild import Guild
 from anecbot.models.player import Player
-from anecbot.services.stats import get_guild_stats
+from anecbot.features.stats.service import get_guild_stats
 
-MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations"
+MIGRATIONS_DIR = Path(__file__).resolve().parents[3] / "migrations"
 GUILD_ID = 100
 
 

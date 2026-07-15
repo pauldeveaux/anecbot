@@ -2,8 +2,9 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from anecbot.cogs.general import help as help_handler
-from anecbot.cogs.general import stats as stats_handler
+from anecbot.cogs.general.handlers import help as help_handler
+from anecbot.cogs.general.handlers import next as next_handler
+from anecbot.cogs.general.handlers import stats as stats_handler
 
 
 class GeneralCog(commands.Cog):
@@ -21,6 +22,13 @@ class GeneralCog(commands.Cog):
     async def stats(self, interaction: discord.Interaction):
         """Show game statistics."""
         await stats_handler.handle(interaction)
+
+    @app_commands.command(
+        name="next", description="Afficher les prochains événements prévus"
+    )
+    async def next(self, interaction: discord.Interaction):
+        """Show upcoming scheduled events."""
+        await next_handler.handle(interaction)
 
 
 async def setup(bot):

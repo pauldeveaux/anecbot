@@ -1,7 +1,7 @@
 import discord
 
 from anecbot.cogs.admin.base import get_db
-from anecbot.cogs.admin.config.handlers.leaderboard_reset_format import (
+from anecbot.cogs.admin.config.leaderboard_reset_format import (
     format_leaderboard_reset_anchor,
     format_leaderboard_reset_interval,
 )
