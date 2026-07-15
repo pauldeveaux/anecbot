@@ -1,6 +1,6 @@
 import discord
 
-from anecbot.services.stats import GuildStats, get_guild_stats
+from anecbot.features.stats.service import GuildStats, get_guild_stats
 from anecbot.utils.time import discord_timestamp
 
 
