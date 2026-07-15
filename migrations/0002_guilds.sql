@@ -11,5 +11,6 @@ CREATE TABLE guilds (
     leaderboard_reset_interval INTEGER NOT NULL DEFAULT 1,
     leaderboard_reset_anchor INTEGER,
     daily_limit INTEGER NOT NULL DEFAULT 0,
-    started INTEGER NOT NULL DEFAULT 0
+    started INTEGER NOT NULL DEFAULT 0,
+    started_at TEXT
 );

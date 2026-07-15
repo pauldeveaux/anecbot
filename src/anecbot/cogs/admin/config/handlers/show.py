@@ -59,9 +59,7 @@ def build_config_embed(
         inline=True,
     )
     if guild.leaderboard_reset_mode != LeaderboardResetMode.NEVER:
-        embed.add_field(
-            name="Reset tous les", value=leaderboard_reset, inline=True
-        )
+        embed.add_field(name="Reset tous les", value=leaderboard_reset, inline=True)
         embed.add_field(
             name="Jour de reset",
             value=format_leaderboard_reset_anchor(

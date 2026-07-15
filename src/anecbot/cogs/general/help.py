@@ -35,6 +35,8 @@ USER_GUIDE = (
     "**Voter**\n"
     "Quand une anecdote est publiée, réponds au QCM pour deviner "
     "à qui elle correspond.\n\n"
+    "**Statistiques**\n"
+    "- `/stats` — voir les statistiques du jeu\n\n"
     "**Leaderboard**\n"
     "- `/leaderboard` — voir le classement actuel\n"
     "- +1 point par bonne réponse\n"

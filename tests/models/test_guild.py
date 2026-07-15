@@ -45,6 +45,7 @@ async def test_upsert_creates_with_defaults(db):
     assert result.leaderboard_reset_interval == 1
     assert result.leaderboard_reset_anchor is None
     assert result.daily_limit == 0
+    assert result.started_at is None
 
 
 @pytest.mark.asyncio

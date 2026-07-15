@@ -23,7 +23,4 @@ bot = create_bot(settings)
 try:
     bot.run(settings.discord_token)
 except LoginFailure:
-    sys.exit(
-        "Invalid Discord token. "
-        "Check DISCORD_TOKEN in your .env file."
-    )
+    sys.exit("Invalid Discord token. Check DISCORD_TOKEN in your .env file.")

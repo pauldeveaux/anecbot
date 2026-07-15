@@ -26,7 +26,7 @@ class ResetConfirmView(discord.ui.View):
         await db.execute("DELETE FROM anecdotes WHERE guild_id = ?", (self.guild_id,))
         await db.execute("DELETE FROM leaderboard WHERE guild_id = ?", (self.guild_id,))
         await db.execute("DELETE FROM players WHERE guild_id = ?", (self.guild_id,))
-        await Guild.upsert(db, self.guild_id, started=0)
+        await Guild.upsert(db, self.guild_id, started=0, started_at=None)
         await db.commit()
 
         await interaction.response.edit_message(

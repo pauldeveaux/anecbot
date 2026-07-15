@@ -123,6 +123,26 @@ class Model:
         return cursor.rowcount > 0
 
     @classmethod
+    async def count(cls, db: aiosqlite.Connection, **filters) -> int:
+        """Count rows matching filters."""
+        if filters:
+            updatable = cls._updatable_columns() | set(cls._pk)
+            for key in filters:
+                if key not in updatable:
+                    raise ValueError(f"Unknown column: {key}")
+            where = " AND ".join(f"{col} = ?" for col in filters)
+            sql = f"SELECT COUNT(*) FROM {cls._table} WHERE {where}"
+            values = tuple(filters.values())
+        else:
+            sql = f"SELECT COUNT(*) FROM {cls._table}"
+            values = ()
+
+        async with db.execute(sql, values) as cursor:
+            row = await cursor.fetchone()
+        assert row is not None
+        return row[0]
+
+    @classmethod
     async def list(cls, db: aiosqlite.Connection, **filters) -> list[Self]:
         """Fetch rows matching filters, return list of model instances."""
         if filters:
