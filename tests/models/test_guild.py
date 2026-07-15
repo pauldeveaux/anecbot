@@ -40,7 +40,9 @@ async def test_upsert_creates_with_defaults(db):
     assert result.reveal_mode == "after-publish"
     assert result.reveal_interval_days == 1
     assert result.reveal_time == "13:30"
-    assert result.leaderboard_reset_days == 0
+    assert result.leaderboard_reset_mode == "never"
+    assert result.leaderboard_reset_interval == 1
+    assert result.leaderboard_reset_anchor is None
     assert result.daily_limit == 0
 
 
@@ -82,6 +84,27 @@ async def test_upsert_updates_reveal_mode(db):
     fetched = await Guild.get(db, 123)
     assert fetched is not None
     assert fetched.reveal_mode == "interval"
+
+
+@pytest.mark.asyncio
+async def test_upsert_updates_leaderboard_reset_fields(db):
+    """Guild.upsert updates and persists leaderboard reset mode/interval/anchor."""
+    await Guild.upsert(db, 123)
+    result = await Guild.upsert(
+        db,
+        123,
+        leaderboard_reset_mode="monthly",
+        leaderboard_reset_interval=2,
+        leaderboard_reset_anchor=1,
+    )
+    assert result.leaderboard_reset_mode == "monthly"
+    assert result.leaderboard_reset_interval == 2
+    assert result.leaderboard_reset_anchor == 1
+    fetched = await Guild.get(db, 123)
+    assert fetched is not None
+    assert fetched.leaderboard_reset_mode == "monthly"
+    assert fetched.leaderboard_reset_interval == 2
+    assert fetched.leaderboard_reset_anchor == 1
 
 
 @pytest.mark.asyncio

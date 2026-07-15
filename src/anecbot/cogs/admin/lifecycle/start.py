@@ -1,35 +1,8 @@
 import discord
 
 from anecbot.cogs.admin.base import get_db
+from anecbot.cogs.admin.config.show import build_config_embed
 from anecbot.models.guild import Guild
-
-
-def _build_config_embed(guild: Guild, channel) -> discord.Embed:
-    """Build an embed showing the current guild configuration."""
-    days_off = guild.days_off if guild.days_off else "aucun"
-    embed = discord.Embed(
-        title="Configuration actuelle",
-        color=discord.Color.blue(),
-    )
-    embed.add_field(
-        name="Channel",
-        value=channel.mention if channel else str(guild.channel_id),
-        inline=True,
-    )
-    embed.add_field(
-        name="Intervalle",
-        value=f"{guild.interval_days} jour(s) actif(s)",
-        inline=True,
-    )
-    embed.add_field(name="Heure de publication", value=guild.publish_time, inline=True)
-    embed.add_field(name="Jours off", value=days_off, inline=True)
-    embed.add_field(
-        name="Délai de révélation",
-        value=f"{guild.reveal_interval_days} jour(s)",
-        inline=True,
-    )
-    embed.add_field(name="Heure de révélation", value=guild.reveal_time, inline=True)
-    return embed
 
 
 class StartConfirmView(discord.ui.View):
@@ -82,7 +55,7 @@ async def handle(interaction: discord.Interaction):
     channel = (
         interaction.guild.get_channel(guild.channel_id) if interaction.guild else None
     )  # type: ignore[union-attr]
-    embed = _build_config_embed(guild, channel)
+    embed = build_config_embed(guild, channel)
     view = StartConfirmView(interaction.guild_id)  # type: ignore[arg-type]
 
     await interaction.response.send_message(

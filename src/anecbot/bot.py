@@ -82,7 +82,8 @@ def create_bot(settings: Settings) -> Bot:
 
     async def close() -> None:
         """Close the database connection before shutting down the bot."""
-        await close_db(bot.db)
+        if hasattr(bot, "db"):
+            await close_db(bot.db)
         await _original_close()
 
     bot.close = close

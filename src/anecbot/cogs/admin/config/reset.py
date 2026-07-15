@@ -27,7 +27,9 @@ class ConfigResetView(discord.ui.View):
             reveal_mode="after-publish",
             reveal_interval_days=1,
             reveal_time="13:30",
-            leaderboard_reset_days=0,
+            leaderboard_reset_mode="never",
+            leaderboard_reset_interval=1,
+            leaderboard_reset_anchor=None,
             daily_limit=0,
         )
         await interaction.response.edit_message(
