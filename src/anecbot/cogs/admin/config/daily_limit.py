@@ -6,6 +6,7 @@ from anecbot.models.guild import Guild
 
 async def handle(interaction: discord.Interaction, n: int):
     """Set the daily anecdote submission limit per person."""
+    assert interaction.guild_id is not None
     if n < 0:
         await interaction.response.send_message(
             "❌ La limite doit être 0 (illimité) ou plus.",

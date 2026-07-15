@@ -29,6 +29,8 @@ DEFAULT_ANCHORS: dict[LeaderboardResetMode, int | None] = {
 
 def format_leaderboard_reset_interval(mode: LeaderboardResetMode, interval: int) -> str:
     """Format the leaderboard reset interval value according to the given mode."""
+    if mode == LeaderboardResetMode.NEVER:
+        return "n/a"
     return f"tous les {interval} {RESET_UNIT_LABELS[mode]}"
 
 
