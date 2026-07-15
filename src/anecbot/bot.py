@@ -6,7 +6,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from anecbot.config import Settings
+from anecbot.utils.config import Settings
 from anecbot.models.database import close_db, init_db
 
 logger = logging.getLogger(__name__)

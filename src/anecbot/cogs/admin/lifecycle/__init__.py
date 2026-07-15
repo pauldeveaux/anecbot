@@ -2,9 +2,9 @@ import discord
 from discord import app_commands
 
 from anecbot.cogs.admin.base import AdminCog
-from anecbot.cogs.admin.lifecycle import reset as reset_handler
-from anecbot.cogs.admin.lifecycle import start as start_handler
-from anecbot.cogs.admin.lifecycle import stop as stop_handler
+from anecbot.cogs.admin.lifecycle.handlers import reset as reset_handler
+from anecbot.cogs.admin.lifecycle.handlers import start as start_handler
+from anecbot.cogs.admin.lifecycle.handlers import stop as stop_handler
 
 
 class LifecycleCog(AdminCog):
