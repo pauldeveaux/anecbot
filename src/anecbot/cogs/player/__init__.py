@@ -2,8 +2,9 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from anecbot.cogs.player.handlers import anecdote_list as list_handler
+from anecbot.cogs.player.handlers import anecdote_submit as submit_handler
 from anecbot.cogs.player.handlers import leave as leave_handler
-from anecbot.cogs.player.handlers import submit as submit_handler
 from anecbot.models.enums import PlayerRole
 
 LEAVE_CHOICES = [
@@ -45,6 +46,13 @@ class PlayerCog(commands.Cog):
     async def anecdote_submit(self, interaction: discord.Interaction):
         """Start the anecdote submission flow in DM."""
         await submit_handler.handle(interaction)
+
+    @anecdote.command(
+        name="list", description="Voir, modifier ou supprimer tes anecdotes en attente"
+    )
+    async def anecdote_list(self, interaction: discord.Interaction):
+        """Show the author's PENDING anecdotes with edit/delete actions."""
+        await list_handler.handle(interaction)
 
 
 async def setup(bot):

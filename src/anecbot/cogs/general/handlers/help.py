@@ -37,7 +37,8 @@ ADMIN_GUIDE = (
 DM_GUIDE = (
     "## 👤 Comment jouer\n\n"
     "**Soumettre une anecdote**\n"
-    "- `/anecdote submit` — envoyer une anecdote\n\n"
+    "- `/anecdote submit` — envoyer une anecdote\n"
+    "- `/anecdote list` — voir, modifier ou supprimer tes anecdotes en attente\n\n"
     "**Inscription**\n"
     "- `/leave [role]` — se désinscrire d'un rôle ou complètement\n\n"
     "Les commandes suivantes sont disponibles **sur le serveur** :\n"
@@ -49,7 +50,8 @@ DM_GUIDE = (
 USER_GUIDE = (
     "## 👤 Comment jouer\n\n"
     "**Soumettre une anecdote**\n"
-    "- `/anecdote submit` — envoyer une anecdote (en DM)\n\n"
+    "- `/anecdote submit` — envoyer une anecdote (en DM)\n"
+    "- `/anecdote list` — voir, modifier ou supprimer tes anecdotes en attente (en DM)\n\n"
     "**Voter**\n"
     "Quand une anecdote est publiée, réponds au QCM pour deviner "
     "à qui elle correspond.\n\n"
