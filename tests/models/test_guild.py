@@ -46,6 +46,7 @@ async def test_upsert_creates_with_defaults(db):
     assert result.leaderboard_reset_anchor is None
     assert result.daily_limit == 0
     assert result.started_at is None
+    assert result.queue_empty_warned == 0
 
 
 @pytest.mark.asyncio
@@ -107,6 +108,17 @@ async def test_upsert_updates_leaderboard_reset_fields(db):
     assert fetched.leaderboard_reset_mode == LeaderboardResetMode.MONTHLY
     assert fetched.leaderboard_reset_interval == 2
     assert fetched.leaderboard_reset_anchor == 1
+
+
+@pytest.mark.asyncio
+async def test_upsert_updates_queue_empty_warned(db):
+    """Guild.upsert updates and persists queue_empty_warned."""
+    await Guild.upsert(db, 123)
+    result = await Guild.upsert(db, 123, queue_empty_warned=1)
+    assert result.queue_empty_warned == 1
+    fetched = await Guild.get(db, 123)
+    assert fetched is not None
+    assert fetched.queue_empty_warned == 1
 
 
 @pytest.mark.asyncio

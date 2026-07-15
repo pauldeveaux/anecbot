@@ -119,6 +119,18 @@ async def test_create_anecdote_defaults_to_pending(db, players):
 
 
 @pytest.mark.asyncio
+async def test_create_anecdote_clears_empty_queue_warning(db, players):
+    """create_anecdote resets the guild's queue_empty_warned flag."""
+    await Guild.upsert(db, GUILD_ID, queue_empty_warned=1)
+
+    await create_anecdote(db, GUILD_ID, AUTHOR_ID, TARGET_ID, "x")
+
+    guild = await Guild.get(db, GUILD_ID)
+    assert guild is not None
+    assert guild.queue_empty_warned == 0
+
+
+@pytest.mark.asyncio
 async def test_get_pending_by_author_only_pending(db, players):
     """Only PENDING anecdotes are returned, not published/revealed ones."""
     pending = await Anecdote.create(

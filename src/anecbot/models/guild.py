@@ -26,3 +26,4 @@ class Guild(Model):
     daily_limit: int = 0
     started: int = 0
     started_at: str | None = None
+    queue_empty_warned: int = 0

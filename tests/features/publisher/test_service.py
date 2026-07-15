@@ -9,7 +9,9 @@ import pytest_asyncio
 from anecbot.features.publisher.service import (
     build_anecdote_embed,
     get_next_pending_anecdote,
+    publish_and_open_voting,
     publish_next_anecdote,
+    send_empty_queue_warning,
 )
 from anecbot.models.anecdote import Anecdote
 from anecbot.models.database import run_migrations
@@ -24,33 +26,67 @@ TARGET_ID = 2
 
 
 class _FakeMessage:
-    """Stand-in for a sent discord.Message — only .id is used by the service."""
+    """Stand-in for a sent discord.Message — .id is read, .edit(view=...) is recorded."""
 
     def __init__(self, message_id: int):
         self.id = message_id
+        self.edited_view: discord.ui.View | None = None
+
+    async def edit(self, view: discord.ui.View | None = None) -> None:
+        """Record the view attached via edit."""
+        self.edited_view = view
 
 
 class _FakeChannel:
-    """Stand-in for a Messageable channel — records sends, returns a fake message."""
+    """Stand-in for a Messageable channel — records sends, returns fake messages."""
 
     def __init__(self):
-        self.sent_embeds: list[discord.Embed] = []
+        self.sent_embeds: list[discord.Embed | None] = []
+        self.sent_contents: list[str | None] = []
+        self._messages: dict[int, _FakeMessage] = {}
 
-    async def send(self, embed: discord.Embed) -> _FakeMessage:
-        """Record the embed and return a fake message with a fixed id."""
+    async def send(
+        self, content: str | None = None, *, embed: discord.Embed | None = None
+    ) -> _FakeMessage:
+        """Record the send and return a fake message with a fixed id."""
         self.sent_embeds.append(embed)
-        return _FakeMessage(message_id=999)
+        self.sent_contents.append(content)
+        message = _FakeMessage(message_id=999)
+        self._messages[message.id] = message
+        return message
+
+    async def fetch_message(self, message_id: int) -> _FakeMessage:
+        """Return the previously sent fake message matching the id."""
+        return self._messages[message_id]
+
+
+class _FakeGuild:
+    """Stand-in for discord.Guild — only get_member is used (via display_name)."""
+
+    def __init__(self, guild_id: int):
+        self.id = guild_id
+
+    def get_member(self, user_id: int) -> None:
+        """No cached members in tests — display_name falls back to alias/user id."""
+        return None
 
 
 class _FakeBot:
-    """Stand-in for discord.Client — only get_channel is used by the service."""
+    """Stand-in for discord.Client — get_channel/get_guild are used by the service."""
 
-    def __init__(self, channels: dict[int, _FakeChannel]):
+    def __init__(
+        self, channels: dict[int, _FakeChannel], guild: _FakeGuild | None = None
+    ):
         self._channels = channels
+        self._guild = guild
 
     def get_channel(self, channel_id: int):
         """Return the fake channel for the given id, or None."""
         return self._channels.get(channel_id)
+
+    def get_guild(self, guild_id: int):
+        """Return the configured fake guild, or None."""
+        return self._guild
 
 
 @pytest_asyncio.fixture
@@ -146,7 +182,9 @@ async def test_publish_next_anecdote_transitions_to_running(db, players):
     assert result.state == "RUNNING"
     assert result.anecdote_message_id == 999
     assert len(channel.sent_embeds) == 1
-    assert channel.sent_embeds[0].description == "x"
+    sent_embed = channel.sent_embeds[0]
+    assert sent_embed is not None
+    assert sent_embed.description == "x"
 
     stored = await Anecdote.get(db, anecdote.id)
     assert stored is not None
@@ -164,3 +202,66 @@ async def test_publish_next_anecdote_returns_none_when_queue_empty(db, players):
 
     assert result is None
     assert channel.sent_embeds == []
+
+
+@pytest.mark.asyncio
+async def test_send_empty_queue_warning_sends_once(db, players):
+    """The warning is sent and the flag is set when not already warned."""
+    channel = _FakeChannel()
+    bot = _FakeBot({CHANNEL_ID: channel})
+    guild = await Guild.get(db, GUILD_ID)
+    assert guild is not None
+
+    await send_empty_queue_warning(cast(discord.Client, bot), db, guild)
+
+    assert len(channel.sent_contents) == 1
+    updated = await Guild.get(db, GUILD_ID)
+    assert updated is not None
+    assert updated.queue_empty_warned == 1
+
+
+@pytest.mark.asyncio
+async def test_send_empty_queue_warning_skips_when_already_warned(db, players):
+    """No duplicate warning is sent once the flag is already set."""
+    await Guild.upsert(db, GUILD_ID, queue_empty_warned=1)
+    channel = _FakeChannel()
+    bot = _FakeBot({CHANNEL_ID: channel})
+    guild = await Guild.get(db, GUILD_ID)
+    assert guild is not None
+
+    await send_empty_queue_warning(cast(discord.Client, bot), db, guild)
+
+    assert channel.sent_contents == []
+
+
+@pytest.mark.asyncio
+async def test_publish_and_open_voting_reaches_published(db, players):
+    """Publishing attaches the MCQ, transitions to PUBLISHED, and sets published_at."""
+    await Anecdote.create(
+        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
+    )
+    channel = _FakeChannel()
+    bot = _FakeBot({CHANNEL_ID: channel}, guild=_FakeGuild(GUILD_ID))
+
+    result = await publish_and_open_voting(cast(discord.Client, bot), db, GUILD_ID)
+
+    assert result is not None
+    assert result.state == "PUBLISHED"
+    assert result.published_at is not None
+
+    sent_message = channel._messages[999]
+    assert isinstance(sent_message.edited_view, discord.ui.View)
+
+
+@pytest.mark.asyncio
+async def test_publish_and_open_voting_warns_once_when_empty(db, players):
+    """An empty queue triggers the warning once, not on a second call."""
+    channel = _FakeChannel()
+    bot = _FakeBot({CHANNEL_ID: channel}, guild=_FakeGuild(GUILD_ID))
+
+    first = await publish_and_open_voting(cast(discord.Client, bot), db, GUILD_ID)
+    second = await publish_and_open_voting(cast(discord.Client, bot), db, GUILD_ID)
+
+    assert first is None
+    assert second is None
+    assert len(channel.sent_contents) == 1
