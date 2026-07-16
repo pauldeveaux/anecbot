@@ -12,6 +12,7 @@ from anecbot.features.publisher.service import (
     get_next_pending_anecdote,
     publish_and_open_voting,
     publish_next_anecdote,
+    recover_stuck_publications,
     refresh_published_reveal_dates,
     send_empty_queue_warning,
 )
@@ -340,3 +341,75 @@ async def test_refresh_published_reveal_dates_no_channel_configured(db):
     bot = _FakeBot({})
 
     await refresh_published_reveal_dates(cast(discord.Client, bot), db, GUILD_ID)
+
+
+# --- recover_stuck_publications ---
+
+
+@pytest.mark.asyncio
+async def test_recover_stuck_publications_finishes_when_message_was_sent(db, players):
+    """A RUNNING anecdote with a known message id resumes to PUBLISHED with the MCQ view."""
+    anecdote = await Anecdote.create(
+        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
+    )
+    await Anecdote.update(db, anecdote.id, state="RUNNING", anecdote_message_id=999)
+    channel = _FakeChannel()
+    channel._messages[999] = _FakeMessage(999)
+    bot = _FakeBot({CHANNEL_ID: channel}, guild=_FakeGuild(GUILD_ID))
+
+    count = await recover_stuck_publications(cast(discord.Client, bot), db, GUILD_ID)
+
+    assert count == 1
+    stored = await Anecdote.get(db, anecdote.id)
+    assert stored is not None
+    assert stored.state == "PUBLISHED"
+    assert stored.published_at is not None
+    edit_kwargs = channel._messages[999].edit_kwargs
+    assert edit_kwargs is not None
+    assert isinstance(edit_kwargs["view"], discord.ui.View)
+
+
+@pytest.mark.asyncio
+async def test_recover_stuck_publications_reverts_when_message_was_never_sent(
+    db, players
+):
+    """A RUNNING anecdote with no known message id reverts to PENDING for a clean retry."""
+    anecdote = await Anecdote.create(
+        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
+    )
+    await Anecdote.update(db, anecdote.id, state="RUNNING")
+    bot = _FakeBot({}, guild=_FakeGuild(GUILD_ID))
+
+    count = await recover_stuck_publications(cast(discord.Client, bot), db, GUILD_ID)
+
+    assert count == 1
+    stored = await Anecdote.get(db, anecdote.id)
+    assert stored is not None
+    assert stored.state == "PENDING"
+
+
+@pytest.mark.asyncio
+async def test_recover_stuck_publications_ignores_other_states(db, players):
+    """PENDING/PUBLISHED/REVEALED anecdotes are left untouched."""
+    pending = await Anecdote.create(
+        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
+    )
+    bot = _FakeBot({}, guild=_FakeGuild(GUILD_ID))
+
+    count = await recover_stuck_publications(cast(discord.Client, bot), db, GUILD_ID)
+
+    assert count == 0
+    stored = await Anecdote.get(db, pending.id)
+    assert stored is not None
+    assert stored.state == "PENDING"
+
+
+@pytest.mark.asyncio
+async def test_recover_stuck_publications_no_channel_configured(db):
+    """No-op when the guild has no channel configured."""
+    await Guild.upsert(db, GUILD_ID)
+    bot = _FakeBot({})
+
+    count = await recover_stuck_publications(cast(discord.Client, bot), db, GUILD_ID)
+
+    assert count == 0

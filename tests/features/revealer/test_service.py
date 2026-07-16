@@ -158,7 +158,7 @@ async def test_get_due_reveals_excludes_not_yet_due(db, players):
 
 @pytest.mark.asyncio
 async def test_get_due_reveals_ignores_non_published(db, players):
-    """PENDING/RUNNING/REVEALED anecdotes are never candidates."""
+    """PENDING anecdotes are never candidates (same for RUNNING/REVEALED)."""
     created = await Anecdote.create(
         db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
     )
@@ -166,6 +166,20 @@ async def test_get_due_reveals_ignores_non_published(db, players):
 
     assert await get_due_reveals(db, GUILD_ID, now) == []
     assert created.state == "PENDING"
+
+
+@pytest.mark.asyncio
+async def test_get_due_reveals_includes_revealing_unconditionally(db, players):
+    """A REVEALING anecdote (crashed mid-reveal) is always due, regardless of timing."""
+    anecdote = await _published_anecdote(
+        db, "2026-07-14T08:00:00"
+    )  # not yet due by time
+    await Anecdote.update(db, anecdote.id, state="REVEALING")
+    now = datetime(2026, 7, 14, 8, 5)  # just after publication, well before reveal_time
+
+    due = await get_due_reveals(db, GUILD_ID, now)
+
+    assert [a.id for a in due] == [anecdote.id]
 
 
 def test_build_reveal_embed_shows_votes_and_spoiler():
@@ -284,6 +298,55 @@ async def test_reveal_anecdote_no_points_for_wrong_voter(db, players):
 
     voter_entry = await LeaderboardEntry.get(db, GUILD_ID, VOTER_ID)
     assert voter_entry is None
+    author_entry = await LeaderboardEntry.get(db, GUILD_ID, AUTHOR_ID)
+    assert author_entry is not None
+    assert author_entry.points == 1
+
+
+@pytest.mark.asyncio
+async def test_reveal_anecdote_resumes_from_revealing_without_reawarding(db, players):
+    """Resuming a REVEALING anecdote (points already awarded) sends the reply but no extra points."""
+    anecdote = await _published_anecdote(db, "2026-07-13T15:00:00")
+    await Vote.upsert(db, anecdote.id, VOTER_ID, voted_for_id=TARGET_ID)
+    # Simulate a crash right after points were awarded but before the reply was sent.
+    await LeaderboardEntry.upsert(db, GUILD_ID, VOTER_ID, points=1)
+    await LeaderboardEntry.upsert(db, GUILD_ID, AUTHOR_ID, points=1)
+    anecdote = await Anecdote.update(db, anecdote.id, state="REVEALING")
+    message = _FakeMessage(999)
+    channel = _FakeChannel({999: message})
+    bot = _FakeBot({CHANNEL_ID: channel}, guild=_FakeGuild(GUILD_ID))
+
+    result = await reveal_anecdote(cast(discord.Client, bot), db, anecdote)
+
+    assert result.state == "REVEALED"
+    assert result.reveal_message_id is not None
+    assert message.reply_embed is not None
+    voter_entry = await LeaderboardEntry.get(db, GUILD_ID, VOTER_ID)
+    assert voter_entry is not None
+    assert voter_entry.points == 1
+    author_entry = await LeaderboardEntry.get(db, GUILD_ID, AUTHOR_ID)
+    assert author_entry is not None
+    assert author_entry.points == 1
+
+
+@pytest.mark.asyncio
+async def test_reveal_anecdote_resumes_from_revealing_with_reply_already_sent(
+    db, players
+):
+    """Resuming a REVEALING anecdote whose reply already went out doesn't send a second one."""
+    anecdote = await _published_anecdote(db, "2026-07-13T15:00:00")
+    await LeaderboardEntry.upsert(db, GUILD_ID, AUTHOR_ID, points=1)
+    anecdote = await Anecdote.update(
+        db, anecdote.id, state="REVEALING", reveal_message_id=1000
+    )
+    message = _FakeMessage(999)
+    channel = _FakeChannel({999: message})
+    bot = _FakeBot({CHANNEL_ID: channel}, guild=_FakeGuild(GUILD_ID))
+
+    result = await reveal_anecdote(cast(discord.Client, bot), db, anecdote)
+
+    assert result.state == "REVEALED"
+    assert message.reply_embed is None
     author_entry = await LeaderboardEntry.get(db, GUILD_ID, AUTHOR_ID)
     assert author_entry is not None
     assert author_entry.points == 1

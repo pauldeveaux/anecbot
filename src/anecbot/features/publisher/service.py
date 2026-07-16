@@ -80,19 +80,11 @@ async def send_empty_queue_warning(
     await Guild.update(db, guild.guild_id, queue_empty_warned=1)
 
 
-async def publish_and_open_voting(
-    bot: discord.Client, db: aiosqlite.Connection, guild_id: int
-) -> Anecdote | None:
-    """Publish the next anecdote with its MCQ, or warn once if the queue is empty."""
-    guild = await Guild.get(db, guild_id)
-    assert guild is not None
-
-    anecdote = await publish_next_anecdote(bot, db, guild_id)
-    if anecdote is None:
-        await send_empty_queue_warning(bot, db, guild)
-        return None
-
-    discord_guild = bot.get_guild(guild_id)
+async def finish_publishing(
+    bot: discord.Client, db: aiosqlite.Connection, guild: Guild, anecdote: Anecdote
+) -> Anecdote:
+    """Open voting on an already-RUNNING anecdote and transition it to PUBLISHED."""
+    discord_guild = bot.get_guild(guild.guild_id)
     assert discord_guild is not None
     assert anecdote.anecdote_message_id is not None
     assert guild.channel_id is not None
@@ -111,7 +103,7 @@ async def publish_and_open_voting(
         ZoneInfo(guild.timezone),
     )
 
-    targets = await get_active_targets(db, guild_id)
+    targets = await get_active_targets(db, guild.guild_id)
     view = McqView(anecdote.id, targets, discord_guild)
     embed = build_anecdote_embed(anecdote, reveal_at)
     await message.edit(embed=embed, view=view)
@@ -119,6 +111,38 @@ async def publish_and_open_voting(
     return await Anecdote.update(
         db, anecdote.id, state="PUBLISHED", published_at=published_at.isoformat()
     )
+
+
+async def publish_and_open_voting(
+    bot: discord.Client, db: aiosqlite.Connection, guild_id: int
+) -> Anecdote | None:
+    """Publish the next anecdote with its MCQ, or warn once if the queue is empty."""
+    guild = await Guild.get(db, guild_id)
+    assert guild is not None
+
+    anecdote = await publish_next_anecdote(bot, db, guild_id)
+    if anecdote is None:
+        await send_empty_queue_warning(bot, db, guild)
+        return None
+
+    return await finish_publishing(bot, db, guild, anecdote)
+
+
+async def recover_stuck_publications(
+    bot: discord.Client, db: aiosqlite.Connection, guild_id: int
+) -> int:
+    """Recover anecdotes stuck in RUNNING from a previous crash. Returns the count recovered."""
+    guild = await Guild.get(db, guild_id)
+    if guild is None or guild.channel_id is None:
+        return 0
+
+    stuck = await Anecdote.list(db, guild_id=guild_id, state="RUNNING")
+    for anecdote in stuck:
+        if anecdote.anecdote_message_id is not None:
+            await finish_publishing(bot, db, guild, anecdote)
+        else:
+            await Anecdote.update(db, anecdote.id, state="PENDING")
+    return len(stuck)
 
 
 async def refresh_published_reveal_dates(

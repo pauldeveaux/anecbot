@@ -20,7 +20,7 @@ MAX_VOTES_FIELD_LENGTH = 1000  # stay under Discord's 1024-char embed field valu
 async def get_due_reveals(
     db: aiosqlite.Connection, guild_id: int, now: datetime
 ) -> list[Anecdote]:
-    """Return PUBLISHED anecdotes whose per-anecdote reveal time has passed."""
+    """Return PUBLISHED anecdotes past their reveal time, plus any REVEALING (mid-crash-recovery)."""
     guild = await Guild.get(db, guild_id)
     if guild is None:
         return []
@@ -29,7 +29,7 @@ async def get_due_reveals(
     tz = ZoneInfo(guild.timezone)
     published = await Anecdote.list(db, guild_id=guild_id, state="PUBLISHED")
 
-    due = []
+    due = list(await Anecdote.list(db, guild_id=guild_id, state="REVEALING"))
     for anecdote in published:
         assert anecdote.published_at is not None
         published_at = datetime.fromisoformat(anecdote.published_at)
@@ -95,7 +95,12 @@ def build_reveal_embed(
 async def reveal_anecdote(
     bot: discord.Client, db: aiosqlite.Connection, anecdote: Anecdote
 ) -> Anecdote:
-    """Close voting on the anecdote's message, reply to it with the reveal, mark REVEALED."""
+    """Close voting, award points, reply with the reveal, mark REVEALED.
+
+    Split into two checkpoints (PUBLISHED -> REVEALING -> REVEALED) so a crash mid-flight can
+    resume without ever re-awarding points: once REVEALING is reached, only the reply-sending step
+    (guarded by reveal_message_id) can still run again.
+    """
     guild = await Guild.get(db, anecdote.guild_id)
     assert guild is not None
     assert guild.channel_id is not None
@@ -109,14 +114,17 @@ async def reveal_anecdote(
     players = {p.user_id: p for p in await Player.list(db, guild_id=anecdote.guild_id)}
     discord_guild = bot.get_guild(anecdote.guild_id)
 
-    await message.edit(view=None)
+    if anecdote.state == "PUBLISHED":
+        await message.edit(view=None)
+        await award_points(
+            db, anecdote.guild_id, votes, anecdote.target_id, anecdote.author_id
+        )
+        anecdote = await Anecdote.update(db, anecdote.id, state="REVEALING")
 
-    embed = build_reveal_embed(anecdote, votes, players, discord_guild)
-    await message.reply(embed=embed)
-
-    await award_points(
-        db, anecdote.guild_id, votes, anecdote.target_id, anecdote.author_id
-    )
+    if anecdote.reveal_message_id is None:
+        embed = build_reveal_embed(anecdote, votes, players, discord_guild)
+        reply = await message.reply(embed=embed)
+        anecdote = await Anecdote.update(db, anecdote.id, reveal_message_id=reply.id)
 
     return await Anecdote.update(db, anecdote.id, state="REVEALED")
 
@@ -124,7 +132,7 @@ async def reveal_anecdote(
 async def reveal_due_anecdotes(
     bot: discord.Client, db: aiosqlite.Connection, guild_id: int, now: datetime
 ) -> list[Anecdote]:
-    """Reveal every PUBLISHED anecdote in the guild whose reveal time has passed."""
+    """Reveal every due anecdote in the guild, including any left REVEALING from a crash."""
     due = await get_due_reveals(db, guild_id, now)
     revealed = [await reveal_anecdote(bot, db, anecdote) for anecdote in due]
     if revealed:
