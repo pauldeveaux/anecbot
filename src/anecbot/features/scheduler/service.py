@@ -100,6 +100,7 @@ def is_leaderboard_reset_due(
     mode: LeaderboardResetMode,
     interval: int,
     anchor: int | None,
+    reset_time: str,
     now: datetime,
     tz: ZoneInfo = UTC,
 ) -> bool:
@@ -109,19 +110,24 @@ def is_leaderboard_reset_due(
 
     local_now = to_local(now, tz)
     local_last = to_local(last_reset, tz) if last_reset is not None else None
+    target_time = parse_time(reset_time)
 
     if mode == LeaderboardResetMode.DAILY:
         if local_last is None:
-            return True
-        return local_now >= local_last + timedelta(days=interval)
+            return local_now.time() >= target_time
+        target_dt = datetime.combine(
+            local_last.date() + timedelta(days=interval), target_time
+        )
+        return local_now >= target_dt
 
     if mode == LeaderboardResetMode.WEEKLY:
         assert anchor is not None
         if local_last is None:
             current_monday = local_now.date() - timedelta(days=local_now.weekday())
             target_date = current_monday + timedelta(days=anchor)
-            return local_now.date() >= target_date
-        return local_now >= local_last + timedelta(weeks=interval)
+        else:
+            target_date = local_last.date() + timedelta(weeks=interval)
+        return local_now >= datetime.combine(target_date, target_time)
 
     if mode == LeaderboardResetMode.MONTHLY:
         assert anchor is not None
@@ -130,7 +136,7 @@ def is_leaderboard_reset_due(
         else:
             year, month = add_months(local_last.year, local_last.month, interval)
             target_date = clamped_month_date(year, month, anchor)
-        return local_now.date() >= target_date
+        return local_now >= datetime.combine(target_date, target_time)
 
     assert anchor is not None
     if local_last is None:
@@ -139,7 +145,7 @@ def is_leaderboard_reset_due(
         target_date = date(local_last.year + interval, 1, 1) + timedelta(
             days=anchor - 1
         )
-    return local_now.date() >= target_date
+    return local_now >= datetime.combine(target_date, target_time)
 
 
 async def check_leaderboard_reset_for_guild(
@@ -161,6 +167,7 @@ async def check_leaderboard_reset_for_guild(
         guild.leaderboard_reset_mode,
         guild.leaderboard_reset_interval,
         guild.leaderboard_reset_anchor,
+        guild.leaderboard_reset_time,
         now,
         tz,
     ):

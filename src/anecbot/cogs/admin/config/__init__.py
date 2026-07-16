@@ -10,6 +10,7 @@ from anecbot.cogs.admin.config.handlers import (
     leaderboard_reset_anchor,
     leaderboard_reset_interval,
     leaderboard_reset_mode,
+    leaderboard_reset_time,
     publish_time,
     reset,
     reveal_interval,
@@ -124,6 +125,17 @@ class ConfigCog(AdminCog):
     ):
         """Set the leaderboard reset anchor."""
         await leaderboard_reset_anchor.handle(interaction, n)
+
+    @config.command(
+        name="leaderboard-reset-time",
+        description="Définir l'heure de reset du leaderboard (format HH:MM)",
+    )
+    @app_commands.describe(heure="Heure de reset du leaderboard au format HH:MM")
+    async def config_leaderboard_reset_time(
+        self, interaction: discord.Interaction, heure: str
+    ):
+        """Set the leaderboard reset time."""
+        await leaderboard_reset_time.handle(interaction, heure)
 
     @config.command(
         name="daily-limit",

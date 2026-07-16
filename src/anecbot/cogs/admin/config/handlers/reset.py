@@ -31,6 +31,7 @@ class ConfigResetView(discord.ui.View):
             leaderboard_reset_mode=LeaderboardResetMode.NEVER,
             leaderboard_reset_interval=1,
             leaderboard_reset_anchor=None,
+            leaderboard_reset_time="00:00",
             daily_limit=0,
         )
         await interaction.response.edit_message(

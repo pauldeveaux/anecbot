@@ -63,6 +63,9 @@ def build_config_embed(
             ),
             inline=True,
         )
+        embed.add_field(
+            name="Heure de reset", value=guild.leaderboard_reset_time, inline=True
+        )
     return embed
 
 

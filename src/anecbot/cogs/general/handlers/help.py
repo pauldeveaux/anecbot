@@ -14,6 +14,7 @@ ADMIN_GUIDE = (
     "(daily/weekly/monthly/yearly)\n"
     "- `/config leaderboard-every` — tous les combien (ex: tous les 2 mois)\n"
     "- `/config leaderboard-reset-day` — jour de reset (selon la fréquence)\n"
+    "- `/config leaderboard-reset-time` — heure de reset du leaderboard\n"
     "- `/config daily-limit` — limite quotidienne de soumissions par personne\n"
     "- `/config show` — afficher la configuration actuelle\n"
     "- `/config reset` — réinitialiser la configuration\n\n"

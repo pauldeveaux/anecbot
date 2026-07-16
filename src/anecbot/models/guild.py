@@ -22,6 +22,7 @@ class Guild(Model):
     leaderboard_reset_mode: LeaderboardResetMode = LeaderboardResetMode.NEVER
     leaderboard_reset_interval: int = 1
     leaderboard_reset_anchor: int | None = None
+    leaderboard_reset_time: str = "00:00"
     daily_limit: int = 0
     started: int = 0
     started_at: str | None = None

@@ -43,6 +43,7 @@ async def test_upsert_creates_with_defaults(db):
     assert result.leaderboard_reset_mode == LeaderboardResetMode.NEVER
     assert result.leaderboard_reset_interval == 1
     assert result.leaderboard_reset_anchor is None
+    assert result.leaderboard_reset_time == "00:00"
     assert result.daily_limit == 0
     assert result.started_at is None
     assert result.queue_empty_warned == 0
@@ -81,7 +82,7 @@ async def test_get_after_upsert(db):
 
 @pytest.mark.asyncio
 async def test_upsert_updates_leaderboard_reset_fields(db):
-    """Guild.upsert updates and persists leaderboard reset mode/interval/anchor."""
+    """Guild.upsert updates and persists leaderboard reset mode/interval/anchor/time."""
     await Guild.upsert(db, 123)
     result = await Guild.upsert(
         db,
@@ -89,15 +90,18 @@ async def test_upsert_updates_leaderboard_reset_fields(db):
         leaderboard_reset_mode=LeaderboardResetMode.MONTHLY,
         leaderboard_reset_interval=2,
         leaderboard_reset_anchor=1,
+        leaderboard_reset_time="18:30",
     )
     assert result.leaderboard_reset_mode == LeaderboardResetMode.MONTHLY
     assert result.leaderboard_reset_interval == 2
     assert result.leaderboard_reset_anchor == 1
+    assert result.leaderboard_reset_time == "18:30"
     fetched = await Guild.get(db, 123)
     assert fetched is not None
     assert fetched.leaderboard_reset_mode == LeaderboardResetMode.MONTHLY
     assert fetched.leaderboard_reset_interval == 2
     assert fetched.leaderboard_reset_anchor == 1
+    assert fetched.leaderboard_reset_time == "18:30"
 
 
 @pytest.mark.asyncio

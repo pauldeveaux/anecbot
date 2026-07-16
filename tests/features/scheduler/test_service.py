@@ -362,30 +362,39 @@ def test_is_leaderboard_reset_due_never_mode_always_false():
     """NEVER mode is never due, regardless of last reset or timing."""
     now = datetime(2026, 7, 13, 15, 0)
     assert (
-        is_leaderboard_reset_due(None, LeaderboardResetMode.NEVER, 1, None, now)
+        is_leaderboard_reset_due(
+            None, LeaderboardResetMode.NEVER, 1, None, "00:00", now
+        )
         is False
     )
 
 
 def test_is_leaderboard_reset_due_daily_first_time():
-    """Never reset before, DAILY mode → due immediately."""
+    """Never reset before, DAILY mode, reset time already passed today → due."""
     now = datetime(2026, 7, 13, 15, 0)
     assert (
-        is_leaderboard_reset_due(None, LeaderboardResetMode.DAILY, 1, None, now) is True
+        is_leaderboard_reset_due(
+            None, LeaderboardResetMode.DAILY, 1, None, "00:00", now
+        )
+        is True
     )
 
 
 def test_is_leaderboard_reset_due_daily_subsequent():
-    """Interval elapsed → due; not yet elapsed → not due."""
+    """Interval elapsed and reset_time reached → due; time not yet reached → not due."""
     last = datetime(2026, 7, 13, 15, 0)
     elapsed = datetime(2026, 7, 14, 16, 0)
     not_elapsed = datetime(2026, 7, 14, 10, 0)
     assert (
-        is_leaderboard_reset_due(last, LeaderboardResetMode.DAILY, 1, None, elapsed)
+        is_leaderboard_reset_due(
+            last, LeaderboardResetMode.DAILY, 1, None, "15:00", elapsed
+        )
         is True
     )
     assert (
-        is_leaderboard_reset_due(last, LeaderboardResetMode.DAILY, 1, None, not_elapsed)
+        is_leaderboard_reset_due(
+            last, LeaderboardResetMode.DAILY, 1, None, "15:00", not_elapsed
+        )
         is False
     )
 
@@ -395,7 +404,8 @@ def test_is_leaderboard_reset_due_weekly_first_time_anchor_reached():
     # Monday 2026-07-13, anchor=2 (Wednesday) reached on Wednesday 2026-07-15
     now = datetime(2026, 7, 15, 0, 0)
     assert (
-        is_leaderboard_reset_due(None, LeaderboardResetMode.WEEKLY, 1, 2, now) is True
+        is_leaderboard_reset_due(None, LeaderboardResetMode.WEEKLY, 1, 2, "00:00", now)
+        is True
     )
 
 
@@ -403,7 +413,8 @@ def test_is_leaderboard_reset_due_weekly_first_time_anchor_not_reached():
     """Never reset, WEEKLY mode, anchor weekday not reached yet this week → not due."""
     now = datetime(2026, 7, 14, 0, 0)  # Tuesday, anchor=2 (Wednesday) not reached
     assert (
-        is_leaderboard_reset_due(None, LeaderboardResetMode.WEEKLY, 1, 2, now) is False
+        is_leaderboard_reset_due(None, LeaderboardResetMode.WEEKLY, 1, 2, "00:00", now)
+        is False
     )
 
 
@@ -413,10 +424,13 @@ def test_is_leaderboard_reset_due_weekly_subsequent():
     due = datetime(2026, 7, 20, 0, 0)
     not_due = datetime(2026, 7, 19, 0, 0)
     assert (
-        is_leaderboard_reset_due(last, LeaderboardResetMode.WEEKLY, 1, 2, due) is True
+        is_leaderboard_reset_due(last, LeaderboardResetMode.WEEKLY, 1, 2, "00:00", due)
+        is True
     )
     assert (
-        is_leaderboard_reset_due(last, LeaderboardResetMode.WEEKLY, 1, 2, not_due)
+        is_leaderboard_reset_due(
+            last, LeaderboardResetMode.WEEKLY, 1, 2, "00:00", not_due
+        )
         is False
     )
 
@@ -425,11 +439,16 @@ def test_is_leaderboard_reset_due_monthly_first_time():
     """Never reset, MONTHLY mode, today on/after the anchor day-of-month → due."""
     now = datetime(2026, 7, 15, 0, 0)
     assert (
-        is_leaderboard_reset_due(None, LeaderboardResetMode.MONTHLY, 1, 15, now) is True
+        is_leaderboard_reset_due(
+            None, LeaderboardResetMode.MONTHLY, 1, 15, "00:00", now
+        )
+        is True
     )
     earlier = datetime(2026, 7, 10, 0, 0)
     assert (
-        is_leaderboard_reset_due(None, LeaderboardResetMode.MONTHLY, 1, 15, earlier)
+        is_leaderboard_reset_due(
+            None, LeaderboardResetMode.MONTHLY, 1, 15, "00:00", earlier
+        )
         is False
     )
 
@@ -440,10 +459,15 @@ def test_is_leaderboard_reset_due_monthly_subsequent():
     due = datetime(2026, 7, 15, 0, 0)
     not_due = datetime(2026, 7, 10, 0, 0)
     assert (
-        is_leaderboard_reset_due(last, LeaderboardResetMode.MONTHLY, 1, 15, due) is True
+        is_leaderboard_reset_due(
+            last, LeaderboardResetMode.MONTHLY, 1, 15, "00:00", due
+        )
+        is True
     )
     assert (
-        is_leaderboard_reset_due(last, LeaderboardResetMode.MONTHLY, 1, 15, not_due)
+        is_leaderboard_reset_due(
+            last, LeaderboardResetMode.MONTHLY, 1, 15, "00:00", not_due
+        )
         is False
     )
 
@@ -452,11 +476,14 @@ def test_is_leaderboard_reset_due_yearly_first_time():
     """Never reset, YEARLY mode, today on/after the anchor day-of-year → due."""
     now = datetime(2026, 1, 15, 0, 0)  # day 15 of the year
     assert (
-        is_leaderboard_reset_due(None, LeaderboardResetMode.YEARLY, 1, 15, now) is True
+        is_leaderboard_reset_due(None, LeaderboardResetMode.YEARLY, 1, 15, "00:00", now)
+        is True
     )
     earlier = datetime(2026, 1, 10, 0, 0)
     assert (
-        is_leaderboard_reset_due(None, LeaderboardResetMode.YEARLY, 1, 15, earlier)
+        is_leaderboard_reset_due(
+            None, LeaderboardResetMode.YEARLY, 1, 15, "00:00", earlier
+        )
         is False
     )
 
@@ -467,11 +494,32 @@ def test_is_leaderboard_reset_due_yearly_subsequent():
     due = datetime(2026, 1, 15, 0, 0)
     not_due = datetime(2025, 6, 1, 0, 0)
     assert (
-        is_leaderboard_reset_due(last, LeaderboardResetMode.YEARLY, 1, 15, due) is True
+        is_leaderboard_reset_due(last, LeaderboardResetMode.YEARLY, 1, 15, "00:00", due)
+        is True
     )
     assert (
-        is_leaderboard_reset_due(last, LeaderboardResetMode.YEARLY, 1, 15, not_due)
+        is_leaderboard_reset_due(
+            last, LeaderboardResetMode.YEARLY, 1, 15, "00:00", not_due
+        )
         is False
+    )
+
+
+def test_is_leaderboard_reset_due_at_configured_time():
+    """The configured reset_time is used instead of always defaulting to midnight."""
+    now_before = datetime(2026, 7, 15, 18, 0)
+    now_after = datetime(2026, 7, 15, 19, 0)
+    assert (
+        is_leaderboard_reset_due(
+            None, LeaderboardResetMode.MONTHLY, 1, 15, "18:30", now_before
+        )
+        is False
+    )
+    assert (
+        is_leaderboard_reset_due(
+            None, LeaderboardResetMode.MONTHLY, 1, 15, "18:30", now_after
+        )
+        is True
     )
 
 
