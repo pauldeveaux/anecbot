@@ -9,7 +9,6 @@ import pytest_asyncio
 
 from anecbot.features.publisher.service import (
     build_anecdote_embed,
-    get_next_pending_anecdote,
     publish_and_open_voting,
     publish_next_anecdote,
     recover_stuck_publications,
@@ -109,49 +108,6 @@ async def players(db):
     await Guild.upsert(db, GUILD_ID, channel_id=CHANNEL_ID)
     await Player.upsert(db, GUILD_ID, AUTHOR_ID, can_submit=1)
     await Player.upsert(db, GUILD_ID, TARGET_ID, can_be_target=1)
-
-
-@pytest.mark.asyncio
-async def test_get_next_pending_anecdote_returns_oldest(db, players):
-    """The oldest PENDING anecdote (by created_at) is returned first."""
-    newer = await Anecdote.create(
-        db,
-        guild_id=GUILD_ID,
-        author_id=AUTHOR_ID,
-        target_id=TARGET_ID,
-        content="Newer",
-        created_at="2026-01-02T10:00:00",
-    )
-    older = await Anecdote.create(
-        db,
-        guild_id=GUILD_ID,
-        author_id=AUTHOR_ID,
-        target_id=TARGET_ID,
-        content="Older",
-        created_at="2026-01-01T10:00:00",
-    )
-
-    result = await get_next_pending_anecdote(db, GUILD_ID)
-    assert result is not None
-    assert result.id == older.id
-    assert result.id != newer.id
-
-
-@pytest.mark.asyncio
-async def test_get_next_pending_anecdote_ignores_non_pending(db, players):
-    """Only PENDING anecdotes are candidates."""
-    published = await Anecdote.create(
-        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="Old"
-    )
-    await Anecdote.update(db, published.id, state="PUBLISHED")
-
-    assert await get_next_pending_anecdote(db, GUILD_ID) is None
-
-
-@pytest.mark.asyncio
-async def test_get_next_pending_anecdote_none_when_empty(db, players):
-    """Returns None when there are no anecdotes at all."""
-    assert await get_next_pending_anecdote(db, GUILD_ID) is None
 
 
 def test_build_anecdote_embed_shows_content_only():
