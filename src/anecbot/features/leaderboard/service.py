@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from typing import cast
 
@@ -10,6 +11,8 @@ from anecbot.models.leaderboard import LeaderboardEntry
 from anecbot.models.player import Player
 from anecbot.models.vote import Vote
 from anecbot.utils.player import display_name
+
+logger = logging.getLogger(__name__)
 
 MAX_LEADERBOARD_ENTRIES = 20
 
@@ -91,3 +94,4 @@ async def reset_leaderboard(
     """Clear every leaderboard entry for the guild and stamp the reset time."""
     await delete_all_entries(db, guild_id)
     await Guild.upsert(db, guild_id, last_leaderboard_reset_at=now.isoformat())
+    logger.info("Leaderboard reset for guild %s", guild_id)

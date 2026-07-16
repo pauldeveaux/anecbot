@@ -1,3 +1,5 @@
+import logging
+
 import aiosqlite
 
 from anecbot.features.anecdote.repository import (
@@ -7,6 +9,8 @@ from anecbot.features.anecdote.repository import (
 )
 from anecbot.models.anecdote import Anecdote
 from anecbot.models.guild import Guild
+
+logger = logging.getLogger(__name__)
 
 
 async def daily_limit_status(
@@ -37,6 +41,7 @@ async def create_anecdote(
         content=content,
     )
     await Guild.update(db, guild_id, queue_empty_warned=0)
+    logger.info("Anecdote %s created for guild %s", anecdote.id, guild_id)
     return anecdote
 
 
