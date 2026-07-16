@@ -162,10 +162,12 @@ def test_is_publication_due_subsequent_interval_not_elapsed():
 
 
 def test_is_publication_due_catch_up_after_long_offline():
-    """A long-overdue publication is still reported as due (idempotent catch-up)."""
+    """A long-overdue publication only fires once today's publish_time is reached."""
     last = datetime(2026, 7, 1, 15, 0)  # Two weeks ago
-    now = datetime(2026, 7, 14, 10, 0)
-    assert is_publication_due(last, 1, "15:00", set(), now) is True
+    before_time = datetime(2026, 7, 14, 10, 0)
+    after_time = datetime(2026, 7, 14, 16, 0)
+    assert is_publication_due(last, 1, "15:00", set(), before_time) is False
+    assert is_publication_due(last, 1, "15:00", set(), after_time) is True
 
 
 def test_is_publication_due_respects_timezone_across_midnight():
@@ -178,8 +180,10 @@ def test_is_publication_due_respects_timezone_across_midnight():
 
     assert is_publication_due(last, 1, "15:00", set(), just_before, PARIS) is False
     assert is_publication_due(last, 1, "15:00", set(), just_after, PARIS) is True
-    # a plain UTC interpretation would already have been due a full day earlier
-    assert is_publication_due(last, 1, "15:00", set(), just_before) is True
+    # a plain UTC interpretation would already treat Jul 14 as the target day,
+    # so it's due a full day earlier than the correct Paris-local Jul 15 target
+    naive_utc_next_day = datetime(2026, 7, 14, 16, 0)
+    assert is_publication_due(last, 1, "15:00", set(), naive_utc_next_day) is True
 
 
 # --- check_publication_for_guild ---

@@ -15,11 +15,15 @@ def build_next_embed(events: NextEvents) -> discord.Embed:
         embed.description = "Le jeu n'est pas en cours."
         return embed
 
-    pub_value = ts(events.next_publication)
-    if events.pending_anecdotes == 0:
-        pub_value += "\n\n⚠️ Aucune anecdote en attente !"
+    if events.publication_overdue:
+        pub_value = "⚡ Publication dès qu'une anecdote sera disponible"
+    elif events.pending_anecdotes == 0:
+        pub_value = ts(events.next_publication) + "\n\n⚠️ Aucune anecdote en attente !"
     else:
-        pub_value += f"\n\n{events.pending_anecdotes} anecdote(s) en attente"
+        pub_value = (
+            ts(events.next_publication)
+            + f"\n\n{events.pending_anecdotes} anecdote(s) en attente"
+        )
 
     embed.add_field(
         name="\U0001f4e2 Prochaine publication",
