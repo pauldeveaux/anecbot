@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 from typing import cast
 
@@ -11,12 +12,14 @@ from anecbot.features.publisher.service import (
     get_next_pending_anecdote,
     publish_and_open_voting,
     publish_next_anecdote,
+    refresh_published_reveal_dates,
     send_empty_queue_warning,
 )
 from anecbot.models.anecdote import Anecdote
 from anecbot.models.database import run_migrations
 from anecbot.models.guild import Guild
 from anecbot.models.player import Player
+from anecbot.utils.text import with_blank_lines
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[3] / "migrations"
 GUILD_ID = 100
@@ -26,15 +29,15 @@ TARGET_ID = 2
 
 
 class _FakeMessage:
-    """Stand-in for a sent discord.Message — .id is read, .edit(view=...) is recorded."""
+    """Stand-in for a sent discord.Message — .id is read, .edit() calls are recorded."""
 
     def __init__(self, message_id: int):
         self.id = message_id
-        self.edited_view: discord.ui.View | None = None
+        self.edit_kwargs: dict[str, object] | None = None
 
-    async def edit(self, view: discord.ui.View | None = None) -> None:
-        """Record the view attached via edit."""
-        self.edited_view = view
+    async def edit(self, **kwargs: object) -> None:
+        """Record exactly which kwargs edit() was called with."""
+        self.edit_kwargs = kwargs
 
 
 class _FakeChannel:
@@ -151,7 +154,7 @@ async def test_get_next_pending_anecdote_none_when_empty(db, players):
 
 
 def test_build_anecdote_embed_shows_content_only():
-    """The embed shows the anecdote's content and no target/author info."""
+    """The embed shows the anecdote's content and no target/author info, no reveal date."""
     anecdote = Anecdote(
         id=1,
         guild_id=GUILD_ID,
@@ -162,9 +165,24 @@ def test_build_anecdote_embed_shows_content_only():
 
     embed = build_anecdote_embed(anecdote)
 
-    assert embed.description == "Un truc drôle"
+    content_field = embed.fields[0]
+    assert content_field.value == with_blank_lines("Un truc drôle")
     assert str(AUTHOR_ID) not in (embed.title or "")
     assert str(TARGET_ID) not in (embed.title or "")
+    assert all(f.name != "🔍 Révélation prévue" for f in embed.fields)
+
+
+def test_build_anecdote_embed_shows_reveal_date_when_given():
+    """When a reveal_at datetime is passed, it's shown as a dedicated field."""
+    anecdote = Anecdote(
+        id=1, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
+    )
+    reveal_at = datetime(2026, 7, 15, 13, 30)
+
+    embed = build_anecdote_embed(anecdote, reveal_at)
+
+    reveal_field = next(f for f in embed.fields if f.name == "🔍 Révélation prévue")
+    assert reveal_field.value is not None
 
 
 @pytest.mark.asyncio
@@ -184,7 +202,8 @@ async def test_publish_next_anecdote_transitions_to_running(db, players):
     assert len(channel.sent_embeds) == 1
     sent_embed = channel.sent_embeds[0]
     assert sent_embed is not None
-    assert sent_embed.description == "x"
+    content_field = sent_embed.fields[0]
+    assert content_field.value == with_blank_lines("x")
 
     stored = await Anecdote.get(db, anecdote.id)
     assert stored is not None
@@ -236,7 +255,7 @@ async def test_send_empty_queue_warning_skips_when_already_warned(db, players):
 
 @pytest.mark.asyncio
 async def test_publish_and_open_voting_reaches_published(db, players):
-    """Publishing attaches the MCQ, transitions to PUBLISHED, and sets published_at."""
+    """Publishing attaches the MCQ, shows the reveal date, and sets published_at."""
     await Anecdote.create(
         db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
     )
@@ -250,7 +269,11 @@ async def test_publish_and_open_voting_reaches_published(db, players):
     assert result.published_at is not None
 
     sent_message = channel._messages[999]
-    assert isinstance(sent_message.edited_view, discord.ui.View)
+    assert sent_message.edit_kwargs is not None
+    assert isinstance(sent_message.edit_kwargs["view"], discord.ui.View)
+    published_embed = sent_message.edit_kwargs["embed"]
+    assert isinstance(published_embed, discord.Embed)
+    assert any(f.name == "🔍 Révélation prévue" for f in published_embed.fields)
 
 
 @pytest.mark.asyncio
@@ -265,3 +288,55 @@ async def test_publish_and_open_voting_warns_once_when_empty(db, players):
     assert first is None
     assert second is None
     assert len(channel.sent_contents) == 1
+
+
+@pytest.mark.asyncio
+async def test_refresh_published_reveal_dates_updates_message(db, players):
+    """Every PUBLISHED anecdote's message is re-edited with a fresh reveal date."""
+    anecdote = await Anecdote.create(
+        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
+    )
+    await Anecdote.update(
+        db,
+        anecdote.id,
+        state="PUBLISHED",
+        published_at="2026-07-13T15:00:00",
+        anecdote_message_id=999,
+    )
+    channel = _FakeChannel()
+    channel._messages[999] = _FakeMessage(999)
+    bot = _FakeBot({CHANNEL_ID: channel})
+
+    await refresh_published_reveal_dates(cast(discord.Client, bot), db, GUILD_ID)
+
+    message = channel._messages[999]
+    assert message.edit_kwargs is not None
+    updated_embed = message.edit_kwargs["embed"]
+    assert isinstance(updated_embed, discord.Embed)
+    assert any(f.name == "🔍 Révélation prévue" for f in updated_embed.fields)
+    assert "view" not in message.edit_kwargs
+
+
+@pytest.mark.asyncio
+async def test_refresh_published_reveal_dates_ignores_non_published(db, players):
+    """PENDING/RUNNING/REVEALED anecdotes' messages are left untouched."""
+    anecdote = await Anecdote.create(
+        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
+    )
+    await Anecdote.update(db, anecdote.id, state="RUNNING", anecdote_message_id=999)
+    channel = _FakeChannel()
+    channel._messages[999] = _FakeMessage(999)
+    bot = _FakeBot({CHANNEL_ID: channel})
+
+    await refresh_published_reveal_dates(cast(discord.Client, bot), db, GUILD_ID)
+
+    assert channel._messages[999].edit_kwargs is None
+
+
+@pytest.mark.asyncio
+async def test_refresh_published_reveal_dates_no_channel_configured(db):
+    """No-op when the guild has no channel configured (nothing to crash on)."""
+    await Guild.upsert(db, GUILD_ID)
+    bot = _FakeBot({})
+
+    await refresh_published_reveal_dates(cast(discord.Client, bot), db, GUILD_ID)

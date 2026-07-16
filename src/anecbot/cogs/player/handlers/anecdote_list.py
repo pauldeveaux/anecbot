@@ -11,6 +11,7 @@ from anecbot.models.anecdote import Anecdote
 from anecbot.models.player import Player
 from anecbot.shared.views.guild_select import GuildSelectView
 from anecbot.shared.views.paginator import NavigablePagesView
+from anecbot.utils.text import with_blank_lines
 from anecbot.utils.time import discord_timestamp
 
 
@@ -111,7 +112,7 @@ class AnecdoteBrowserView(NavigablePagesView):
         anecdote = self.current
         embed = discord.Embed(
             title="Anecdotes en attente",
-            description=anecdote.content,
+            description=with_blank_lines(anecdote.content),
             color=discord.Color.blue(),
         )
         embed.add_field(name="Cible", value=self._target_field(anecdote), inline=False)
@@ -140,7 +141,8 @@ class AnecdoteBrowserView(NavigablePagesView):
         """Show a delete confirmation for the current anecdote."""
         anecdote = self.current
         embed = discord.Embed(
-            title="Confirme la suppression", description=anecdote.content
+            title="Confirme la suppression",
+            description=with_blank_lines(anecdote.content),
         )
         embed.add_field(name="Cible", value=self._target_field(anecdote), inline=True)
         await interaction.response.edit_message(

@@ -7,6 +7,8 @@ import pytest
 import pytest_asyncio
 
 from anecbot.features.player.service import (
+    MAX_TARGETS,
+    can_register_as_target,
     get_active_targets,
     get_member_guilds,
     is_active_submitter,
@@ -82,6 +84,35 @@ async def test_get_active_targets_excludes_given_user(db):
 
     targets = await get_active_targets(db, GUILD_ID, exclude_user_id=1)
     assert [t.user_id for t in targets] == [2]
+
+
+@pytest.mark.asyncio
+async def test_can_register_as_target_true_under_limit(db):
+    """A new user can be added as a target when under the cap."""
+    await Guild.upsert(db, GUILD_ID)
+    await Player.upsert(db, GUILD_ID, 1, can_be_target=1)
+
+    assert await can_register_as_target(db, GUILD_ID, 2) is True
+
+
+@pytest.mark.asyncio
+async def test_can_register_as_target_false_at_limit(db):
+    """A new user cannot be added once MAX_TARGETS active targets already exist."""
+    await Guild.upsert(db, GUILD_ID)
+    for user_id in range(MAX_TARGETS):
+        await Player.upsert(db, GUILD_ID, user_id, can_be_target=1)
+
+    assert await can_register_as_target(db, GUILD_ID, MAX_TARGETS) is False
+
+
+@pytest.mark.asyncio
+async def test_can_register_as_target_true_for_already_active_target(db):
+    """A user who is already an active target isn't blocked by their own slot."""
+    await Guild.upsert(db, GUILD_ID)
+    for user_id in range(MAX_TARGETS):
+        await Player.upsert(db, GUILD_ID, user_id, can_be_target=1)
+
+    assert await can_register_as_target(db, GUILD_ID, 0) is True
 
 
 def test_get_member_guilds_returns_only_shared_guilds():

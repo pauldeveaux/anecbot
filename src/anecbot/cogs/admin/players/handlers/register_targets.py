@@ -9,6 +9,7 @@ from anecbot.cogs.admin.players.handlers.registration import (
     parse_role_id,
     send_dm,
 )
+from anecbot.features.player.service import can_register_as_target
 from anecbot.models.guild import Guild
 from anecbot.models.player import Player
 
@@ -49,6 +50,15 @@ class RegisterTargetsView(discord.ui.View):
         if existing and existing.can_be_target:
             await interaction.response.send_message(
                 "ℹ️ Tu es déjà inscrit(e) comme cible.",
+                ephemeral=True,
+            )
+            return
+
+        if not await can_register_as_target(
+            db, interaction.guild_id, interaction.user.id
+        ):
+            await interaction.response.send_message(
+                "❌ Le nombre maximum de cibles (25) est atteint pour ce serveur.",
                 ephemeral=True,
             )
             return
