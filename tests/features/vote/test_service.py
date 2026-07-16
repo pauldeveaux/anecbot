@@ -125,3 +125,12 @@ async def test_record_vote_rejected_when_anecdote_missing(db):
     result = await record_vote(db, 999, VOTER_ID, TARGET_ID)
 
     assert result == VoteResult.CLOSED
+
+
+@pytest.mark.asyncio
+async def test_record_vote_rejected_when_voter_is_author(db, anecdote):
+    """The anecdote's author can't vote on it — they already know the answer."""
+    result = await record_vote(db, anecdote.id, AUTHOR_ID, TARGET_ID)
+
+    assert result == VoteResult.IS_AUTHOR
+    assert await Vote.get(db, anecdote.id, AUTHOR_ID) is None

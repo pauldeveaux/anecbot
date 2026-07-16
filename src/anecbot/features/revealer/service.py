@@ -4,6 +4,7 @@ from typing import cast
 import aiosqlite
 import discord
 
+from anecbot.features.leaderboard.service import award_points, publish_leaderboard
 from anecbot.models.anecdote import Anecdote
 from anecbot.models.guild import Guild
 from anecbot.models.player import Player
@@ -111,6 +112,10 @@ async def reveal_anecdote(
     embed = build_reveal_embed(anecdote, votes, players, discord_guild)
     await message.reply(embed=embed)
 
+    await award_points(
+        db, anecdote.guild_id, votes, anecdote.target_id, anecdote.author_id
+    )
+
     return await Anecdote.update(db, anecdote.id, state="REVEALED")
 
 
@@ -119,4 +124,7 @@ async def reveal_due_anecdotes(
 ) -> list[Anecdote]:
     """Reveal every PUBLISHED anecdote in the guild whose reveal time has passed."""
     due = await get_due_reveals(db, guild_id, now)
-    return [await reveal_anecdote(bot, db, anecdote) for anecdote in due]
+    revealed = [await reveal_anecdote(bot, db, anecdote) for anecdote in due]
+    if revealed:
+        await publish_leaderboard(bot, db, guild_id)
+    return revealed

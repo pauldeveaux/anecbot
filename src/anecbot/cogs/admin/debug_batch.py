@@ -7,6 +7,7 @@ import discord
 from discord import app_commands
 
 from anecbot.cogs.admin.base import AdminCog, get_db
+from anecbot.features.leaderboard.service import publish_leaderboard
 from anecbot.features.publisher.service import publish_and_open_voting
 from anecbot.features.revealer.service import reveal_anecdote
 from anecbot.models.anecdote import Anecdote
@@ -32,6 +33,8 @@ class DebugBatchCog(AdminCog):
             db, guild_id=interaction.guild_id, state="PUBLISHED"
         )
         revealed = [await reveal_anecdote(bot, db, anecdote) for anecdote in to_reveal]
+        if revealed:
+            await publish_leaderboard(bot, db, interaction.guild_id)
 
         published = await publish_and_open_voting(bot, db, interaction.guild_id)
 
