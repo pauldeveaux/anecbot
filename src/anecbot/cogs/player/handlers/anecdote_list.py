@@ -127,11 +127,12 @@ class AnecdoteBrowserView(NavigablePagesView):
         probability = self.probabilities.get(anecdote.id, 0.0)
         embed.add_field(
             name="Probabilité de sélection",
-            value=f"~{probability * 100:.1f}% (estimation, peut varier)",
+            value=f"~{probability * 100:.1f}%",
             inline=False,
         )
         embed.set_footer(
-            text=f"Anecdote {self.page + 1}/{len(self.anecdotes)} — #{anecdote.id}"
+            text=f"Anecdote {self.page + 1}/{len(self.anecdotes)} — #{anecdote.id} · "
+            "Probabilités calculées en temps réel, elles évoluent avec la file."
         )
         return embed
 
