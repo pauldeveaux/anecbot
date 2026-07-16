@@ -1,9 +1,11 @@
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timezone
 
 import pytest
 
 from anecbot.models.enums import LeaderboardResetMode
 from anecbot.utils.time import (
+    discord_timestamp,
+    discord_timestamp_full_relative,
     next_active_day,
     next_leaderboard_reset_datetime,
     next_publication_datetime,
@@ -13,6 +15,38 @@ from anecbot.utils.time import (
 )
 
 WEEKEND = {5, 6}  # Saturday, Sunday
+
+
+# --- discord_timestamp / discord_timestamp_full_relative ---
+
+
+def test_discord_timestamp_full_relative_treats_naive_datetime_as_utc():
+    """The Unix timestamp is computed as if dt were UTC, regardless of the system's local tz.
+
+    Regression test: naive datetime.timestamp() interprets the value as local system time,
+    not UTC. Since every naive datetime in this codebase is UTC (via utcnow()), computing
+    .timestamp() directly silently shifted every rendered Discord timestamp by the host
+    machine's UTC offset — a genuinely future UTC time could render as already past.
+    """
+    dt = datetime(2026, 7, 16, 13, 47)
+    expected_unix = int(dt.replace(tzinfo=timezone.utc).timestamp())
+
+    result = discord_timestamp_full_relative(dt)
+
+    assert f"<t:{expected_unix}:f>" in result
+    assert f"<t:{expected_unix}:R>" in result
+
+
+def test_discord_timestamp_treats_naive_datetime_as_utc():
+    """Same UTC-interpretation fix, for the single-timestamp variant."""
+    iso = "2026-07-16T13:47:00"
+    expected_unix = int(
+        datetime.fromisoformat(iso).replace(tzinfo=timezone.utc).timestamp()
+    )
+
+    result = discord_timestamp(iso)
+
+    assert result == f"<t:{expected_unix}:f>"
 
 
 # --- parse_days_off ---
