@@ -16,6 +16,7 @@ from anecbot.features.revealer.service import (
 from anecbot.models.anecdote import Anecdote
 from anecbot.models.database import run_migrations
 from anecbot.models.guild import Guild
+from anecbot.models.leaderboard import LeaderboardEntry
 from anecbot.models.player import Player
 from anecbot.models.vote import Vote
 from anecbot.utils.text import with_blank_lines
@@ -51,10 +52,16 @@ class _FakeChannel:
 
     def __init__(self, messages: dict[int, _FakeMessage]):
         self._messages = messages
+        self.sent_embeds: list[discord.Embed | None] = []
 
     async def fetch_message(self, message_id: int) -> _FakeMessage:
         """Return the pre-seeded fake message matching the id."""
         return self._messages[message_id]
+
+    async def send(self, *, embed: discord.Embed | None = None) -> _FakeMessage:
+        """Record the sent embed (used when the leaderboard is published)."""
+        self.sent_embeds.append(embed)
+        return _FakeMessage(message_id=len(self.sent_embeds) + 9000)
 
 
 class _FakeGuild:
@@ -248,6 +255,41 @@ async def test_reveal_anecdote_transitions_to_revealed(db, players):
 
 
 @pytest.mark.asyncio
+async def test_reveal_anecdote_awards_points_to_correct_voter_and_author(db, players):
+    """The correct voter and the anecdote's author each get +1 point."""
+    anecdote = await _published_anecdote(db, "2026-07-13T15:00:00")
+    await Vote.upsert(db, anecdote.id, VOTER_ID, voted_for_id=TARGET_ID)
+    channel = _FakeChannel({999: _FakeMessage(999)})
+    bot = _FakeBot({CHANNEL_ID: channel}, guild=_FakeGuild(GUILD_ID))
+
+    await reveal_anecdote(cast(discord.Client, bot), db, anecdote)
+
+    voter_entry = await LeaderboardEntry.get(db, GUILD_ID, VOTER_ID)
+    assert voter_entry is not None
+    assert voter_entry.points == 1
+    author_entry = await LeaderboardEntry.get(db, GUILD_ID, AUTHOR_ID)
+    assert author_entry is not None
+    assert author_entry.points == 1
+
+
+@pytest.mark.asyncio
+async def test_reveal_anecdote_no_points_for_wrong_voter(db, players):
+    """A voter who guessed wrong gets no point, but the author still does."""
+    anecdote = await _published_anecdote(db, "2026-07-13T15:00:00")
+    await Vote.upsert(db, anecdote.id, VOTER_ID, voted_for_id=VOTER_ID)
+    channel = _FakeChannel({999: _FakeMessage(999)})
+    bot = _FakeBot({CHANNEL_ID: channel}, guild=_FakeGuild(GUILD_ID))
+
+    await reveal_anecdote(cast(discord.Client, bot), db, anecdote)
+
+    voter_entry = await LeaderboardEntry.get(db, GUILD_ID, VOTER_ID)
+    assert voter_entry is None
+    author_entry = await LeaderboardEntry.get(db, GUILD_ID, AUTHOR_ID)
+    assert author_entry is not None
+    assert author_entry.points == 1
+
+
+@pytest.mark.asyncio
 async def test_reveal_due_anecdotes_reveals_only_due_ones(db, players):
     """Only anecdotes past their reveal time are revealed; others are left PUBLISHED."""
     due = await _published_anecdote(db, "2026-07-13T15:00:00", message_id=999)
@@ -262,3 +304,40 @@ async def test_reveal_due_anecdotes_reveals_only_due_ones(db, players):
     still_published = await Anecdote.get(db, not_due.id)
     assert still_published is not None
     assert still_published.state == "PUBLISHED"
+
+
+@pytest.mark.asyncio
+async def test_reveal_due_anecdotes_publishes_leaderboard_once(db, players):
+    """The leaderboard is posted exactly once after the batch, not per anecdote."""
+    await _published_anecdote(db, "2026-07-13T15:00:00", message_id=999)
+    second = await Anecdote.create(
+        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="Autre"
+    )
+    await Anecdote.update(
+        db,
+        second.id,
+        state="PUBLISHED",
+        published_at="2026-07-13T16:00:00",
+        anecdote_message_id=1000,
+    )
+    channel = _FakeChannel({999: _FakeMessage(999), 1000: _FakeMessage(1000)})
+    bot = _FakeBot({CHANNEL_ID: channel}, guild=_FakeGuild(GUILD_ID))
+    now = datetime(2026, 7, 14, 14, 0)
+
+    revealed = await reveal_due_anecdotes(cast(discord.Client, bot), db, GUILD_ID, now)
+
+    assert len(revealed) == 2
+    assert len(channel.sent_embeds) == 1
+
+
+@pytest.mark.asyncio
+async def test_reveal_due_anecdotes_does_not_publish_when_nothing_revealed(db, players):
+    """No leaderboard is posted when there's nothing due to reveal."""
+    channel = _FakeChannel({})
+    bot = _FakeBot({CHANNEL_ID: channel}, guild=_FakeGuild(GUILD_ID))
+    now = datetime(2026, 7, 14, 14, 0)
+
+    revealed = await reveal_due_anecdotes(cast(discord.Client, bot), db, GUILD_ID, now)
+
+    assert revealed == []
+    assert channel.sent_embeds == []
