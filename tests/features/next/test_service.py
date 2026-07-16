@@ -137,24 +137,41 @@ async def test_leaderboard_reset_never_hidden(db):
     now = datetime(2026, 7, 15, 10, 0)
     events = await get_next_events(db, GUILD_ID, now)
     assert events.leaderboard_reset_hidden is True
-    assert events.leaderboard_reset_placeholder is False
+    assert events.next_leaderboard_reset is None
 
 
 @pytest.mark.asyncio
-async def test_leaderboard_reset_non_never_placeholder(db):
-    """Leaderboard reset shows placeholder when mode is not NEVER."""
+async def test_leaderboard_reset_non_never_computed(db):
+    """Leaderboard reset computes a real next-reset datetime when mode is not NEVER."""
     await Guild.upsert(
         db,
         GUILD_ID,
         channel_id=1,
         started=1,
         leaderboard_reset_mode=LeaderboardResetMode.MONTHLY,
+        leaderboard_reset_anchor=1,
+    )
+    now = datetime(2026, 7, 15, 10, 0)  # day 15 > anchor 1 → next month
+    events = await get_next_events(db, GUILD_ID, now)
+    assert events.leaderboard_reset_hidden is False
+    assert events.next_leaderboard_reset == datetime(2026, 8, 1, 0, 0)
+
+
+@pytest.mark.asyncio
+async def test_leaderboard_reset_uses_last_reset(db):
+    """Leaderboard reset advances from last_leaderboard_reset_at once set."""
+    await Guild.upsert(
+        db,
+        GUILD_ID,
+        channel_id=1,
+        started=1,
+        leaderboard_reset_mode=LeaderboardResetMode.MONTHLY,
+        leaderboard_reset_anchor=1,
+        last_leaderboard_reset_at="2026-07-01T00:00:00",
     )
     now = datetime(2026, 7, 15, 10, 0)
     events = await get_next_events(db, GUILD_ID, now)
-    assert events.leaderboard_reset_hidden is False
-    assert events.leaderboard_reset_placeholder is True
-    assert events.next_leaderboard_reset is None
+    assert events.next_leaderboard_reset == datetime(2026, 8, 1, 0, 0)
 
 
 @pytest.mark.asyncio

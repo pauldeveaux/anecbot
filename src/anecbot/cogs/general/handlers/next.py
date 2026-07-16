@@ -39,16 +39,10 @@ def build_next_embed(events: NextEvents) -> discord.Embed:
     )
 
     if not events.leaderboard_reset_hidden:
-        if events.leaderboard_reset_placeholder:
-            reset_value = "À venir"
-        elif events.next_leaderboard_reset:
-            reset_value = ts(events.next_leaderboard_reset)
-        else:
-            reset_value = "—"
-
+        assert events.next_leaderboard_reset is not None
         embed.add_field(
             name="\U0001f504 Prochain reset du leaderboard",
-            value=reset_value,
+            value=ts(events.next_leaderboard_reset),
             inline=True,
         )
 

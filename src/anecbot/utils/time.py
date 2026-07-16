@@ -1,4 +1,7 @@
+import calendar
 from datetime import date, datetime, time, timedelta, timezone
+
+from anecbot.models.enums import LeaderboardResetMode
 
 DISCORD_FULL = "f"
 DISCORD_RELATIVE = "R"
@@ -105,3 +108,63 @@ def next_reveal_datetime(
     rev_time = parse_time(reveal_time)
     target_date = next_active_day(published_at.date(), reveal_interval_days, days_off)
     return datetime.combine(target_date, rev_time)
+
+
+def _add_months(year: int, month: int, months: int) -> tuple[int, int]:
+    """Add a number of months to a (year, month) pair, returning the new pair."""
+    total = year * 12 + (month - 1) + months
+    new_year, new_month0 = divmod(total, 12)
+    return new_year, new_month0 + 1
+
+
+def _clamped_month_date(year: int, month: int, day: int) -> date:
+    """Return a date for (year, month, day), clamping day to the month's last valid day."""
+    last_day = calendar.monthrange(year, month)[1]
+    return date(year, month, min(day, last_day))
+
+
+def next_leaderboard_reset_datetime(
+    last_reset: datetime | None,
+    mode: LeaderboardResetMode,
+    interval: int,
+    anchor: int | None,
+    now: datetime,
+) -> datetime:
+    """Return the next datetime when the leaderboard should reset."""
+    assert mode != LeaderboardResetMode.NEVER
+
+    if mode == LeaderboardResetMode.DAILY:
+        if last_reset is None:
+            return now
+        return last_reset + timedelta(days=interval)
+
+    if mode == LeaderboardResetMode.WEEKLY:
+        assert anchor is not None
+        if last_reset is None:
+            current_monday = now.date() - timedelta(days=now.weekday())
+            this_week_anchor = current_monday + timedelta(days=anchor)
+            if this_week_anchor < now.date():
+                this_week_anchor += timedelta(weeks=interval)
+            return datetime.combine(this_week_anchor, time())
+        return last_reset + timedelta(weeks=interval)
+
+    if mode == LeaderboardResetMode.MONTHLY:
+        assert anchor is not None
+        if last_reset is None:
+            year, month = now.year, now.month
+            if now.day > anchor:
+                year, month = _add_months(year, month, interval)
+        else:
+            year, month = _add_months(last_reset.year, last_reset.month, interval)
+        return datetime.combine(_clamped_month_date(year, month, anchor), time())
+
+    assert anchor is not None
+    if last_reset is None:
+        year = now.year
+        candidate = date(year, 1, 1) + timedelta(days=anchor - 1)
+        if candidate < now.date():
+            year += interval
+    else:
+        year = last_reset.year + interval
+    target_date = date(year, 1, 1) + timedelta(days=anchor - 1)
+    return datetime.combine(target_date, time())

@@ -26,3 +26,4 @@ class Guild(Model):
     started: int = 0
     started_at: str | None = None
     queue_empty_warned: int = 0
+    last_leaderboard_reset_at: str | None = None
