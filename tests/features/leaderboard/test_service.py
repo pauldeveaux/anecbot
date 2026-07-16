@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 from typing import cast
 
@@ -11,6 +12,7 @@ from anecbot.features.leaderboard.service import (
     award_points,
     build_leaderboard_embed,
     publish_leaderboard,
+    reset_leaderboard,
 )
 from anecbot.models.database import run_migrations
 from anecbot.models.guild import Guild
@@ -200,3 +202,34 @@ async def test_publish_leaderboard_skips_when_no_channel_configured(db):
     bot = _FakeBot({})
 
     await publish_leaderboard(cast(discord.Client, bot), db, GUILD_ID)
+
+
+@pytest.mark.asyncio
+async def test_reset_leaderboard_clears_entries_and_stamps_time(db, guild):
+    """All points for the guild are wiped and last_leaderboard_reset_at is recorded."""
+    await LeaderboardEntry.upsert(db, GUILD_ID, AUTHOR_ID, points=5)
+    await LeaderboardEntry.upsert(db, GUILD_ID, VOTER_ID, points=2)
+    now = datetime(2026, 7, 13, 15, 0)
+
+    await reset_leaderboard(db, GUILD_ID, now)
+
+    assert await LeaderboardEntry.list(db, guild_id=GUILD_ID) == []
+    updated = await Guild.get(db, GUILD_ID)
+    assert updated is not None
+    assert updated.last_leaderboard_reset_at == now.isoformat()
+
+
+@pytest.mark.asyncio
+async def test_reset_leaderboard_does_not_touch_other_guilds(db, guild):
+    """Only the target guild's entries are cleared."""
+    other_guild_id = GUILD_ID + 1
+    await Guild.upsert(db, other_guild_id)
+    await LeaderboardEntry.upsert(db, GUILD_ID, AUTHOR_ID, points=5)
+    await LeaderboardEntry.upsert(db, other_guild_id, AUTHOR_ID, points=3)
+
+    await reset_leaderboard(db, GUILD_ID, datetime(2026, 7, 13, 15, 0))
+
+    assert await LeaderboardEntry.list(db, guild_id=GUILD_ID) == []
+    other_entry = await LeaderboardEntry.get(db, other_guild_id, AUTHOR_ID)
+    assert other_entry is not None
+    assert other_entry.points == 3

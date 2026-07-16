@@ -1,8 +1,10 @@
+from datetime import datetime
 from typing import cast
 
 import aiosqlite
 import discord
 
+from anecbot.features.leaderboard.repository import delete_all_entries
 from anecbot.models.guild import Guild
 from anecbot.models.leaderboard import LeaderboardEntry
 from anecbot.models.player import Player
@@ -81,3 +83,11 @@ async def publish_leaderboard(
     discord_guild = bot.get_guild(guild_id)
     embed = build_leaderboard_embed(entries, players, discord_guild)
     await channel.send(embed=embed)
+
+
+async def reset_leaderboard(
+    db: aiosqlite.Connection, guild_id: int, now: datetime
+) -> None:
+    """Clear every leaderboard entry for the guild and stamp the reset time."""
+    await delete_all_entries(db, guild_id)
+    await Guild.upsert(db, guild_id, last_leaderboard_reset_at=now.isoformat())

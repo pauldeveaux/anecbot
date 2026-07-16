@@ -75,6 +75,7 @@ async def get_next_events(
             guild.leaderboard_reset_mode,
             guild.leaderboard_reset_interval,
             guild.leaderboard_reset_anchor,
+            guild.leaderboard_reset_time,
             now,
             tz,
         )

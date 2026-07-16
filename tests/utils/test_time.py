@@ -494,21 +494,30 @@ def test_reveal_weekend_off_publish_friday():
 # --- next_leaderboard_reset_datetime — DAILY ---
 
 
-def test_leaderboard_daily_first_reset_is_now():
-    """DAILY, never reset before → due immediately (now)."""
+def test_leaderboard_daily_first_reset_time_not_yet_reached():
+    """DAILY, never reset before, reset time not yet reached today → today at reset_time."""
     now = datetime(2026, 7, 13, 10, 0)
     result = next_leaderboard_reset_datetime(
-        None, LeaderboardResetMode.DAILY, 1, None, now
+        None, LeaderboardResetMode.DAILY, 1, None, "15:00", now
     )
-    assert result == now
+    assert result == datetime(2026, 7, 13, 15, 0)
+
+
+def test_leaderboard_daily_first_reset_time_already_passed():
+    """DAILY, never reset before, reset time already passed today → tomorrow at reset_time."""
+    now = datetime(2026, 7, 13, 10, 0)
+    result = next_leaderboard_reset_datetime(
+        None, LeaderboardResetMode.DAILY, 1, None, "00:00", now
+    )
+    assert result == datetime(2026, 7, 14, 0, 0)
 
 
 def test_leaderboard_daily_subsequent():
-    """DAILY, subsequent reset → last_reset + interval days."""
+    """DAILY, subsequent reset → last_reset + interval days, at reset_time."""
     last = datetime(2026, 7, 10, 0, 0)
     now = datetime(2026, 7, 13, 10, 0)
     result = next_leaderboard_reset_datetime(
-        last, LeaderboardResetMode.DAILY, 3, None, now
+        last, LeaderboardResetMode.DAILY, 3, None, "00:00", now
     )
     assert result == datetime(2026, 7, 13, 0, 0)
 
@@ -517,10 +526,10 @@ def test_leaderboard_daily_subsequent():
 
 
 def test_leaderboard_weekly_first_reset_today_matches_anchor():
-    """WEEKLY, never reset, today is the anchor weekday → due today at midnight."""
+    """WEEKLY, never reset, today is the anchor weekday → due today at reset_time."""
     now = datetime(2026, 7, 13, 10, 0)  # Monday
     result = next_leaderboard_reset_datetime(
-        None, LeaderboardResetMode.WEEKLY, 1, 0, now
+        None, LeaderboardResetMode.WEEKLY, 1, 0, "00:00", now
     )
     assert result == datetime(2026, 7, 13, 0, 0)
 
@@ -529,7 +538,7 @@ def test_leaderboard_weekly_first_reset_future_anchor():
     """WEEKLY, never reset, anchor weekday is later this week."""
     now = datetime(2026, 7, 13, 10, 0)  # Monday
     result = next_leaderboard_reset_datetime(
-        None, LeaderboardResetMode.WEEKLY, 1, 3, now
+        None, LeaderboardResetMode.WEEKLY, 1, 3, "00:00", now
     )
     assert result == datetime(2026, 7, 16, 0, 0)  # Thursday
 
@@ -539,28 +548,28 @@ def test_leaderboard_weekly_first_reset_anchor_passed_rounds_to_interval():
     skips a full interval of weeks rather than just the next occurrence."""
     now = datetime(2026, 7, 16, 10, 0)  # Thursday
     result = next_leaderboard_reset_datetime(
-        None, LeaderboardResetMode.WEEKLY, 2, 0, now
+        None, LeaderboardResetMode.WEEKLY, 2, 0, "00:00", now
     )
     # This week's Monday (2026-07-13) already passed; interval=2 → +2 weeks from it
     assert result == datetime(2026, 7, 27, 0, 0)  # Monday two weeks later
 
 
 def test_leaderboard_weekly_subsequent():
-    """WEEKLY, subsequent reset → last_reset + interval weeks."""
+    """WEEKLY, subsequent reset → last_reset + interval weeks, at reset_time."""
     last = datetime(2026, 7, 13, 0, 0)  # Monday
     now = datetime(2026, 7, 14, 10, 0)
     result = next_leaderboard_reset_datetime(
-        last, LeaderboardResetMode.WEEKLY, 2, 0, now
+        last, LeaderboardResetMode.WEEKLY, 2, 0, "00:00", now
     )
     assert result == datetime(2026, 7, 27, 0, 0)  # 2 weeks later, still Monday
 
 
 def test_leaderboard_weekly_first_reset_respects_timezone_across_midnight():
-    """The midnight reset anchor is computed in the guild's local day, not UTC's."""
+    """The reset_time anchor is computed in the guild's local day, not UTC's."""
     now = datetime(2026, 7, 13, 23, 0)  # 23:00 UTC Monday = 01:00 CEST Tuesday
 
     result = next_leaderboard_reset_datetime(
-        None, LeaderboardResetMode.WEEKLY, 1, 1, now, PARIS
+        None, LeaderboardResetMode.WEEKLY, 1, 1, "00:00", now, PARIS
     )
 
     # local now is Tuesday (weekday=1), matching anchor=1 exactly -> today (local) at midnight
@@ -568,7 +577,7 @@ def test_leaderboard_weekly_first_reset_respects_timezone_across_midnight():
     assert result == datetime(2026, 7, 13, 22, 0)
     # a plain UTC interpretation would have landed on 2026-07-14 00:00 instead
     assert result != next_leaderboard_reset_datetime(
-        None, LeaderboardResetMode.WEEKLY, 1, 1, now
+        None, LeaderboardResetMode.WEEKLY, 1, 1, "00:00", now
     )
 
 
@@ -579,7 +588,7 @@ def test_leaderboard_monthly_first_reset_before_anchor_this_month():
     """MONTHLY, never reset, today's day-of-month is before the anchor → this month."""
     now = datetime(2026, 7, 10, 10, 0)
     result = next_leaderboard_reset_datetime(
-        None, LeaderboardResetMode.MONTHLY, 1, 15, now
+        None, LeaderboardResetMode.MONTHLY, 1, 15, "00:00", now
     )
     assert result == datetime(2026, 7, 15, 0, 0)
 
@@ -588,7 +597,7 @@ def test_leaderboard_monthly_first_reset_today_matches_anchor():
     """MONTHLY, never reset, today's day-of-month equals the anchor → due today."""
     now = datetime(2026, 7, 10, 10, 0)
     result = next_leaderboard_reset_datetime(
-        None, LeaderboardResetMode.MONTHLY, 1, 10, now
+        None, LeaderboardResetMode.MONTHLY, 1, 10, "00:00", now
     )
     assert result == datetime(2026, 7, 10, 0, 0)
 
@@ -597,7 +606,7 @@ def test_leaderboard_monthly_first_reset_after_anchor_next_month():
     """MONTHLY, never reset, today's day-of-month is past the anchor → next month."""
     now = datetime(2026, 7, 10, 10, 0)
     result = next_leaderboard_reset_datetime(
-        None, LeaderboardResetMode.MONTHLY, 1, 5, now
+        None, LeaderboardResetMode.MONTHLY, 1, 5, "00:00", now
     )
     assert result == datetime(2026, 8, 5, 0, 0)
 
@@ -607,7 +616,7 @@ def test_leaderboard_monthly_first_reset_anchor_passed_rounds_to_interval():
     skips a full interval of months rather than just next month."""
     now = datetime(2026, 7, 16, 10, 0)
     result = next_leaderboard_reset_datetime(
-        None, LeaderboardResetMode.MONTHLY, 2, 1, now
+        None, LeaderboardResetMode.MONTHLY, 2, 1, "00:00", now
     )
     assert result == datetime(2026, 9, 1, 0, 0)
 
@@ -617,7 +626,7 @@ def test_leaderboard_monthly_subsequent():
     last = datetime(2026, 7, 15, 0, 0)
     now = datetime(2026, 7, 16, 10, 0)
     result = next_leaderboard_reset_datetime(
-        last, LeaderboardResetMode.MONTHLY, 1, 15, now
+        last, LeaderboardResetMode.MONTHLY, 1, 15, "00:00", now
     )
     assert result == datetime(2026, 8, 15, 0, 0)
 
@@ -627,7 +636,7 @@ def test_leaderboard_monthly_clamps_to_last_valid_day():
     last = datetime(2026, 1, 29, 0, 0)
     now = datetime(2026, 1, 30, 10, 0)
     result = next_leaderboard_reset_datetime(
-        last, LeaderboardResetMode.MONTHLY, 1, 29, now
+        last, LeaderboardResetMode.MONTHLY, 1, 29, "00:00", now
     )
     assert result == datetime(2026, 2, 28, 0, 0)  # 2026 is not a leap year
 
@@ -639,7 +648,7 @@ def test_leaderboard_yearly_first_reset_later_this_year():
     """YEARLY, never reset, anchor day-of-year hasn't passed yet → this year."""
     now = datetime(2026, 1, 15, 10, 0)
     result = next_leaderboard_reset_datetime(
-        None, LeaderboardResetMode.YEARLY, 1, 32, now
+        None, LeaderboardResetMode.YEARLY, 1, 32, "00:00", now
     )
     assert result == datetime(2026, 2, 1, 0, 0)  # day 32 = Feb 1
 
@@ -648,7 +657,7 @@ def test_leaderboard_yearly_first_reset_already_passed_next_year():
     """YEARLY, never reset, anchor day-of-year already passed → next year."""
     now = datetime(2026, 6, 1, 10, 0)
     result = next_leaderboard_reset_datetime(
-        None, LeaderboardResetMode.YEARLY, 1, 1, now
+        None, LeaderboardResetMode.YEARLY, 1, 1, "00:00", now
     )
     assert result == datetime(2027, 1, 1, 0, 0)
 
@@ -658,7 +667,7 @@ def test_leaderboard_yearly_first_reset_anchor_passed_rounds_to_interval():
     skips a full interval of years rather than just next year."""
     now = datetime(2026, 6, 1, 10, 0)
     result = next_leaderboard_reset_datetime(
-        None, LeaderboardResetMode.YEARLY, 2, 1, now
+        None, LeaderboardResetMode.YEARLY, 2, 1, "00:00", now
     )
     assert result == datetime(2028, 1, 1, 0, 0)
 
@@ -668,13 +677,24 @@ def test_leaderboard_yearly_subsequent():
     last = datetime(2026, 2, 1, 0, 0)  # day 32
     now = datetime(2026, 2, 2, 10, 0)
     result = next_leaderboard_reset_datetime(
-        last, LeaderboardResetMode.YEARLY, 1, 32, now
+        last, LeaderboardResetMode.YEARLY, 1, 32, "00:00", now
     )
     assert result == datetime(2027, 2, 1, 0, 0)
+
+
+def test_leaderboard_reset_at_configured_time():
+    """The configured reset_time is used instead of always defaulting to midnight."""
+    now = datetime(2026, 7, 16, 10, 0)
+    result = next_leaderboard_reset_datetime(
+        None, LeaderboardResetMode.MONTHLY, 1, 20, "18:30", now
+    )
+    assert result == datetime(2026, 7, 20, 18, 30)
 
 
 def test_leaderboard_reset_never_mode_asserts():
     """Calling with mode=NEVER is a precondition violation, not a valid input."""
     now = datetime(2026, 7, 13, 10, 0)
     with pytest.raises(AssertionError):
-        next_leaderboard_reset_datetime(None, LeaderboardResetMode.NEVER, 1, None, now)
+        next_leaderboard_reset_datetime(
+            None, LeaderboardResetMode.NEVER, 1, None, "00:00", now
+        )

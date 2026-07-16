@@ -130,14 +130,14 @@ def next_reveal_datetime(
     return to_utc(datetime.combine(target_date, rev_time), tz)
 
 
-def _add_months(year: int, month: int, months: int) -> tuple[int, int]:
+def add_months(year: int, month: int, months: int) -> tuple[int, int]:
     """Add a number of months to a (year, month) pair, returning the new pair."""
     total = year * 12 + (month - 1) + months
     new_year, new_month0 = divmod(total, 12)
     return new_year, new_month0 + 1
 
 
-def _clamped_month_date(year: int, month: int, day: int) -> date:
+def clamped_month_date(year: int, month: int, day: int) -> date:
     """Return a date for (year, month, day), clamping day to the month's last valid day."""
     last_day = calendar.monthrange(year, month)[1]
     return date(year, month, min(day, last_day))
@@ -148,6 +148,7 @@ def next_leaderboard_reset_datetime(
     mode: LeaderboardResetMode,
     interval: int,
     anchor: int | None,
+    reset_time: str,
     now: datetime,
     tz: ZoneInfo = UTC,
 ) -> datetime:
@@ -156,11 +157,16 @@ def next_leaderboard_reset_datetime(
 
     local_now = to_local(now, tz)
     local_last = to_local(last_reset, tz) if last_reset is not None else None
+    target_time = parse_time(reset_time)
 
     if mode == LeaderboardResetMode.DAILY:
         if local_last is None:
-            return to_utc(local_now, tz)
-        return to_utc(local_last + timedelta(days=interval), tz)
+            today = local_now.date()
+            if local_now.time() < target_time:
+                return to_utc(datetime.combine(today, target_time), tz)
+            return to_utc(datetime.combine(today + timedelta(days=1), target_time), tz)
+        target_date = local_last.date() + timedelta(days=interval)
+        return to_utc(datetime.combine(target_date, target_time), tz)
 
     if mode == LeaderboardResetMode.WEEKLY:
         assert anchor is not None
@@ -169,28 +175,29 @@ def next_leaderboard_reset_datetime(
             this_week_anchor = current_monday + timedelta(days=anchor)
             if this_week_anchor < local_now.date():
                 this_week_anchor += timedelta(weeks=interval)
-            return to_utc(datetime.combine(this_week_anchor, time()), tz)
-        return to_utc(local_last + timedelta(weeks=interval), tz)
+            return to_utc(datetime.combine(this_week_anchor, target_time), tz)
+        target_date = local_last.date() + timedelta(weeks=interval)
+        return to_utc(datetime.combine(target_date, target_time), tz)
 
     if mode == LeaderboardResetMode.MONTHLY:
         assert anchor is not None
         if local_last is None:
             year, month = local_now.year, local_now.month
             if local_now.day > anchor:
-                year, month = _add_months(year, month, interval)
+                year, month = add_months(year, month, interval)
         else:
-            year, month = _add_months(local_last.year, local_last.month, interval)
+            year, month = add_months(local_last.year, local_last.month, interval)
         return to_utc(
-            datetime.combine(_clamped_month_date(year, month, anchor), time()), tz
+            datetime.combine(clamped_month_date(year, month, anchor), target_time), tz
         )
 
     assert anchor is not None
     if local_last is None:
         year = local_now.year
-        candidate = date(year, 1, 1) + timedelta(days=anchor - 1)
-        if candidate < local_now.date():
+        candidate_date = date(year, 1, 1) + timedelta(days=anchor - 1)
+        if candidate_date < local_now.date():
             year += interval
     else:
         year = local_last.year + interval
     target_date = date(year, 1, 1) + timedelta(days=anchor - 1)
-    return to_utc(datetime.combine(target_date, time()), tz)
+    return to_utc(datetime.combine(target_date, target_time), tz)

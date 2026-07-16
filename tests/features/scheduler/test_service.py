@@ -9,13 +9,20 @@ import pytest
 import pytest_asyncio
 
 from anecbot.features.scheduler.service import (
+    check_leaderboard_reset_for_guild,
+    check_leaderboard_resets,
     check_publication_for_guild,
     check_publications,
+    check_reveal_for_guild,
+    check_reveals,
+    is_leaderboard_reset_due,
     is_publication_due,
 )
 from anecbot.models.anecdote import Anecdote
 from anecbot.models.database import run_migrations
+from anecbot.models.enums import LeaderboardResetMode
 from anecbot.models.guild import Guild
+from anecbot.models.leaderboard import LeaderboardEntry
 from anecbot.models.player import Player
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[3] / "migrations"
@@ -24,6 +31,7 @@ OTHER_GUILD_ID = 200
 CHANNEL_ID = 555
 AUTHOR_ID = 1
 TARGET_ID = 2
+VOTER_ID = 3
 
 WEEKEND = {5, 6}  # Saturday, Sunday
 PARIS = ZoneInfo("Europe/Paris")
@@ -38,13 +46,17 @@ class _FakeMessage:
     async def edit(self, **kwargs: object) -> None:
         """No-op edit for scheduler tests — only publish_and_open_voting's side effects matter."""
 
+    async def reply(self, embed: discord.Embed | None = None) -> "_FakeMessage":
+        """Return a new fake message, standing in for a reveal reply."""
+        return _FakeMessage(message_id=self.id + 1)
+
 
 class _FakeChannel:
     """Stand-in for a Messageable channel — records sends, returns fake messages."""
 
-    def __init__(self):
+    def __init__(self, messages: dict[int, _FakeMessage] | None = None):
         self.sent_embeds: list[discord.Embed | None] = []
-        self._messages: dict[int, _FakeMessage] = {}
+        self._messages: dict[int, _FakeMessage] = messages or {}
 
     async def send(self, *, embed: discord.Embed | None = None) -> _FakeMessage:
         """Record the send and return a fake message with a fixed id."""
@@ -258,3 +270,336 @@ async def test_check_publications_only_checks_started_guilds(db, players):
 
     assert triggered == 1
     assert len(channel.sent_embeds) == 1
+
+
+# --- check_reveal_for_guild / check_reveals ---
+
+
+async def _published_anecdote(
+    db: aiosqlite.Connection, published_at: str, message_id: int = 999
+) -> Anecdote:
+    """Insert a PUBLISHED anecdote with a fixed published_at and message id."""
+    created = await Anecdote.create(
+        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
+    )
+    return await Anecdote.update(
+        db,
+        created.id,
+        state="PUBLISHED",
+        published_at=published_at,
+        anecdote_message_id=message_id,
+    )
+
+
+@pytest.mark.asyncio
+async def test_check_reveal_for_guild_skips_when_not_started(db, players):
+    """A guild with started=0 is never revealed, regardless of timing."""
+    await _published_anecdote(db, "2026-07-13T15:00:00")
+    await Guild.upsert(db, GUILD_ID, started=0)
+    guild = await Guild.get(db, GUILD_ID)
+    assert guild is not None
+    channel = _FakeChannel({999: _FakeMessage(999)})
+    bot = _FakeBot({CHANNEL_ID: channel})
+
+    revealed = await check_reveal_for_guild(
+        cast(discord.Client, bot), db, guild, datetime(2026, 7, 14, 14, 0)
+    )
+
+    assert revealed == 0
+
+
+@pytest.mark.asyncio
+async def test_check_reveal_for_guild_skips_when_no_channel(db):
+    """A guild with no channel configured is never revealed."""
+    await Guild.upsert(db, GUILD_ID, started=1)
+    guild = await Guild.get(db, GUILD_ID)
+    assert guild is not None
+
+    revealed = await check_reveal_for_guild(
+        cast(discord.Client, _FakeBot({})), db, guild, datetime(2026, 7, 14, 14, 0)
+    )
+
+    assert revealed == 0
+
+
+@pytest.mark.asyncio
+async def test_check_reveal_for_guild_reveals_due_anecdotes(db, players):
+    """A due anecdote in a started guild with a channel is revealed."""
+    await _published_anecdote(db, "2026-07-13T15:00:00")
+    guild = await Guild.get(db, GUILD_ID)
+    assert guild is not None
+    channel = _FakeChannel({999: _FakeMessage(999)})
+    bot = _FakeBot({CHANNEL_ID: channel})
+
+    revealed = await check_reveal_for_guild(
+        cast(discord.Client, bot), db, guild, datetime(2026, 7, 14, 14, 0)
+    )
+
+    assert revealed == 1
+    stored = await Anecdote.list(db, guild_id=GUILD_ID, state="REVEALED")
+    assert len(stored) == 1
+
+
+@pytest.mark.asyncio
+async def test_check_reveals_sums_across_started_guilds(db, players):
+    """A stopped guild is skipped, but a started one contributes to the total."""
+    await _published_anecdote(db, "2026-07-13T15:00:00")
+    await Guild.upsert(db, OTHER_GUILD_ID, channel_id=CHANNEL_ID, started=0)
+    channel = _FakeChannel({999: _FakeMessage(999)})
+    bot = _FakeBot({CHANNEL_ID: channel})
+
+    total = await check_reveals(
+        cast(discord.Client, bot), db, datetime(2026, 7, 14, 14, 0)
+    )
+
+    assert total == 1
+
+
+# --- is_leaderboard_reset_due ---
+
+
+def test_is_leaderboard_reset_due_never_mode_always_false():
+    """NEVER mode is never due, regardless of last reset or timing."""
+    now = datetime(2026, 7, 13, 15, 0)
+    assert (
+        is_leaderboard_reset_due(
+            None, LeaderboardResetMode.NEVER, 1, None, "00:00", now
+        )
+        is False
+    )
+
+
+def test_is_leaderboard_reset_due_daily_first_time():
+    """Never reset before, DAILY mode, reset time already passed today → due."""
+    now = datetime(2026, 7, 13, 15, 0)
+    assert (
+        is_leaderboard_reset_due(
+            None, LeaderboardResetMode.DAILY, 1, None, "00:00", now
+        )
+        is True
+    )
+
+
+def test_is_leaderboard_reset_due_daily_subsequent():
+    """Interval elapsed and reset_time reached → due; time not yet reached → not due."""
+    last = datetime(2026, 7, 13, 15, 0)
+    elapsed = datetime(2026, 7, 14, 16, 0)
+    not_elapsed = datetime(2026, 7, 14, 10, 0)
+    assert (
+        is_leaderboard_reset_due(
+            last, LeaderboardResetMode.DAILY, 1, None, "15:00", elapsed
+        )
+        is True
+    )
+    assert (
+        is_leaderboard_reset_due(
+            last, LeaderboardResetMode.DAILY, 1, None, "15:00", not_elapsed
+        )
+        is False
+    )
+
+
+def test_is_leaderboard_reset_due_weekly_first_time_anchor_reached():
+    """Never reset, WEEKLY mode, today is on/after this week's anchor weekday → due."""
+    # Monday 2026-07-13, anchor=2 (Wednesday) reached on Wednesday 2026-07-15
+    now = datetime(2026, 7, 15, 0, 0)
+    assert (
+        is_leaderboard_reset_due(None, LeaderboardResetMode.WEEKLY, 1, 2, "00:00", now)
+        is True
+    )
+
+
+def test_is_leaderboard_reset_due_weekly_first_time_anchor_not_reached():
+    """Never reset, WEEKLY mode, anchor weekday not reached yet this week → not due."""
+    now = datetime(2026, 7, 14, 0, 0)  # Tuesday, anchor=2 (Wednesday) not reached
+    assert (
+        is_leaderboard_reset_due(None, LeaderboardResetMode.WEEKLY, 1, 2, "00:00", now)
+        is False
+    )
+
+
+def test_is_leaderboard_reset_due_weekly_subsequent():
+    """Interval elapsed in weeks → due."""
+    last = datetime(2026, 7, 13, 0, 0)
+    due = datetime(2026, 7, 20, 0, 0)
+    not_due = datetime(2026, 7, 19, 0, 0)
+    assert (
+        is_leaderboard_reset_due(last, LeaderboardResetMode.WEEKLY, 1, 2, "00:00", due)
+        is True
+    )
+    assert (
+        is_leaderboard_reset_due(
+            last, LeaderboardResetMode.WEEKLY, 1, 2, "00:00", not_due
+        )
+        is False
+    )
+
+
+def test_is_leaderboard_reset_due_monthly_first_time():
+    """Never reset, MONTHLY mode, today on/after the anchor day-of-month → due."""
+    now = datetime(2026, 7, 15, 0, 0)
+    assert (
+        is_leaderboard_reset_due(
+            None, LeaderboardResetMode.MONTHLY, 1, 15, "00:00", now
+        )
+        is True
+    )
+    earlier = datetime(2026, 7, 10, 0, 0)
+    assert (
+        is_leaderboard_reset_due(
+            None, LeaderboardResetMode.MONTHLY, 1, 15, "00:00", earlier
+        )
+        is False
+    )
+
+
+def test_is_leaderboard_reset_due_monthly_subsequent():
+    """Interval elapsed in months → due."""
+    last = datetime(2026, 6, 15, 0, 0)
+    due = datetime(2026, 7, 15, 0, 0)
+    not_due = datetime(2026, 7, 10, 0, 0)
+    assert (
+        is_leaderboard_reset_due(
+            last, LeaderboardResetMode.MONTHLY, 1, 15, "00:00", due
+        )
+        is True
+    )
+    assert (
+        is_leaderboard_reset_due(
+            last, LeaderboardResetMode.MONTHLY, 1, 15, "00:00", not_due
+        )
+        is False
+    )
+
+
+def test_is_leaderboard_reset_due_yearly_first_time():
+    """Never reset, YEARLY mode, today on/after the anchor day-of-year → due."""
+    now = datetime(2026, 1, 15, 0, 0)  # day 15 of the year
+    assert (
+        is_leaderboard_reset_due(None, LeaderboardResetMode.YEARLY, 1, 15, "00:00", now)
+        is True
+    )
+    earlier = datetime(2026, 1, 10, 0, 0)
+    assert (
+        is_leaderboard_reset_due(
+            None, LeaderboardResetMode.YEARLY, 1, 15, "00:00", earlier
+        )
+        is False
+    )
+
+
+def test_is_leaderboard_reset_due_yearly_subsequent():
+    """Interval elapsed in years → due."""
+    last = datetime(2025, 1, 15, 0, 0)
+    due = datetime(2026, 1, 15, 0, 0)
+    not_due = datetime(2025, 6, 1, 0, 0)
+    assert (
+        is_leaderboard_reset_due(last, LeaderboardResetMode.YEARLY, 1, 15, "00:00", due)
+        is True
+    )
+    assert (
+        is_leaderboard_reset_due(
+            last, LeaderboardResetMode.YEARLY, 1, 15, "00:00", not_due
+        )
+        is False
+    )
+
+
+def test_is_leaderboard_reset_due_at_configured_time():
+    """The configured reset_time is used instead of always defaulting to midnight."""
+    now_before = datetime(2026, 7, 15, 18, 0)
+    now_after = datetime(2026, 7, 15, 19, 0)
+    assert (
+        is_leaderboard_reset_due(
+            None, LeaderboardResetMode.MONTHLY, 1, 15, "18:30", now_before
+        )
+        is False
+    )
+    assert (
+        is_leaderboard_reset_due(
+            None, LeaderboardResetMode.MONTHLY, 1, 15, "18:30", now_after
+        )
+        is True
+    )
+
+
+# --- check_leaderboard_reset_for_guild / check_leaderboard_resets ---
+
+
+@pytest.mark.asyncio
+async def test_check_leaderboard_reset_for_guild_skips_when_never_mode(db, players):
+    """The default NEVER mode never triggers a reset."""
+    guild = await Guild.get(db, GUILD_ID)
+    assert guild is not None
+    channel = _FakeChannel()
+    bot = _FakeBot({CHANNEL_ID: channel})
+
+    triggered = await check_leaderboard_reset_for_guild(
+        cast(discord.Client, bot), db, guild, datetime(2026, 7, 13, 15, 0)
+    )
+
+    assert triggered is False
+    assert channel.sent_embeds == []
+
+
+@pytest.mark.asyncio
+async def test_check_leaderboard_reset_for_guild_skips_when_not_started(db, players):
+    """A guild with started=0 is never reset, regardless of timing."""
+    await Guild.upsert(
+        db, GUILD_ID, started=0, leaderboard_reset_mode=LeaderboardResetMode.DAILY
+    )
+    guild = await Guild.get(db, GUILD_ID)
+    assert guild is not None
+    channel = _FakeChannel()
+    bot = _FakeBot({CHANNEL_ID: channel})
+
+    triggered = await check_leaderboard_reset_for_guild(
+        cast(discord.Client, bot), db, guild, datetime(2026, 7, 13, 15, 0)
+    )
+
+    assert triggered is False
+
+
+@pytest.mark.asyncio
+async def test_check_leaderboard_reset_for_guild_publishes_then_resets(db, players):
+    """A due reset first publishes the current standings, then clears the leaderboard."""
+    await Guild.upsert(db, GUILD_ID, leaderboard_reset_mode=LeaderboardResetMode.DAILY)
+    await LeaderboardEntry.upsert(db, GUILD_ID, AUTHOR_ID, points=5)
+    guild = await Guild.get(db, GUILD_ID)
+    assert guild is not None
+    channel = _FakeChannel()
+    bot = _FakeBot({CHANNEL_ID: channel})
+    now = datetime(2026, 7, 13, 15, 0)
+
+    triggered = await check_leaderboard_reset_for_guild(
+        cast(discord.Client, bot), db, guild, now
+    )
+
+    assert triggered is True
+    assert len(channel.sent_embeds) == 1
+    assert await LeaderboardEntry.list(db, guild_id=GUILD_ID) == []
+    updated = await Guild.get(db, GUILD_ID)
+    assert updated is not None
+    assert updated.last_leaderboard_reset_at == now.isoformat()
+
+
+@pytest.mark.asyncio
+async def test_check_leaderboard_resets_only_checks_started_guilds(db, players):
+    """A stopped guild is skipped even if its reset would otherwise be due."""
+    await Guild.upsert(db, GUILD_ID, leaderboard_reset_mode=LeaderboardResetMode.DAILY)
+    await LeaderboardEntry.upsert(db, GUILD_ID, AUTHOR_ID, points=5)
+    await Guild.upsert(
+        db,
+        OTHER_GUILD_ID,
+        channel_id=CHANNEL_ID,
+        started=0,
+        leaderboard_reset_mode=LeaderboardResetMode.DAILY,
+    )
+    channel = _FakeChannel()
+    bot = _FakeBot({CHANNEL_ID: channel})
+
+    triggered = await check_leaderboard_resets(
+        cast(discord.Client, bot), db, datetime(2026, 7, 13, 15, 0)
+    )
+
+    assert triggered == 1
