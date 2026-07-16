@@ -3,6 +3,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from anecbot.cogs.general.handlers import help as help_handler
+from anecbot.cogs.general.handlers import leaderboard as leaderboard_handler
 from anecbot.cogs.general.handlers import next as next_handler
 from anecbot.cogs.general.handlers import stats as stats_handler
 
@@ -31,6 +32,14 @@ class GeneralCog(commands.Cog):
     async def next(self, interaction: discord.Interaction):
         """Show upcoming scheduled events."""
         await next_handler.handle(interaction)
+
+    @app_commands.command(
+        name="leaderboard", description="Afficher le classement actuel"
+    )
+    @app_commands.guild_only()
+    async def leaderboard(self, interaction: discord.Interaction):
+        """Show the current leaderboard."""
+        await leaderboard_handler.handle(interaction)
 
 
 async def setup(bot):
