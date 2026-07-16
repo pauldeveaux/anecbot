@@ -1,13 +1,6 @@
 from enum import StrEnum
 
 
-class RevealMode(StrEnum):
-    """Reveal cadence: per-anecdote offset, or batched on a fixed interval."""
-
-    AFTER_PUBLISH = "after-publish"
-    INTERVAL = "interval"
-
-
 class PlayerRole(StrEnum):
     """Player role in a guild."""
 

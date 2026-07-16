@@ -5,7 +5,7 @@ import pytest
 import pytest_asyncio
 
 from anecbot.models.database import run_migrations
-from anecbot.models.enums import LeaderboardResetMode, RevealMode
+from anecbot.models.enums import LeaderboardResetMode
 from anecbot.models.guild import Guild
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations"
@@ -38,7 +38,6 @@ async def test_upsert_creates_with_defaults(db):
     assert result.interval_days == 1
     assert result.publish_time == "15:00"
     assert result.days_off == ""
-    assert result.reveal_mode == RevealMode.AFTER_PUBLISH
     assert result.reveal_interval_days == 1
     assert result.reveal_time == "13:30"
     assert result.leaderboard_reset_mode == LeaderboardResetMode.NEVER
@@ -47,6 +46,7 @@ async def test_upsert_creates_with_defaults(db):
     assert result.daily_limit == 0
     assert result.started_at is None
     assert result.queue_empty_warned == 0
+    assert result.last_leaderboard_reset_at is None
 
 
 @pytest.mark.asyncio
@@ -79,17 +79,6 @@ async def test_get_after_upsert(db):
 
 
 @pytest.mark.asyncio
-async def test_upsert_updates_reveal_mode(db):
-    """Guild.upsert updates and persists reveal_mode."""
-    await Guild.upsert(db, 123)
-    result = await Guild.upsert(db, 123, reveal_mode=RevealMode.INTERVAL)
-    assert result.reveal_mode == RevealMode.INTERVAL
-    fetched = await Guild.get(db, 123)
-    assert fetched is not None
-    assert fetched.reveal_mode == RevealMode.INTERVAL
-
-
-@pytest.mark.asyncio
 async def test_upsert_updates_leaderboard_reset_fields(db):
     """Guild.upsert updates and persists leaderboard reset mode/interval/anchor."""
     await Guild.upsert(db, 123)
@@ -119,6 +108,21 @@ async def test_upsert_updates_queue_empty_warned(db):
     fetched = await Guild.get(db, 123)
     assert fetched is not None
     assert fetched.queue_empty_warned == 1
+
+
+@pytest.mark.asyncio
+async def test_upsert_updates_last_leaderboard_reset_at(db):
+    """Guild.upsert updates and persists last_leaderboard_reset_at."""
+    await Guild.upsert(db, 123)
+    result = await Guild.upsert(
+        db,
+        123,
+        last_leaderboard_reset_at="2026-01-02T00:00:00",
+    )
+    assert result.last_leaderboard_reset_at == "2026-01-02T00:00:00"
+    fetched = await Guild.get(db, 123)
+    assert fetched is not None
+    assert fetched.last_leaderboard_reset_at == "2026-01-02T00:00:00"
 
 
 @pytest.mark.asyncio

@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import ClassVar
 
 from anecbot.models.base import Model
-from anecbot.models.enums import LeaderboardResetMode, RevealMode
+from anecbot.models.enums import LeaderboardResetMode
 
 
 @dataclass
@@ -17,7 +17,6 @@ class Guild(Model):
     interval_days: int = 1
     publish_time: str = "15:00"
     days_off: str = ""
-    reveal_mode: RevealMode = RevealMode.AFTER_PUBLISH
     reveal_interval_days: int = 1
     reveal_time: str = "13:30"
     leaderboard_reset_mode: LeaderboardResetMode = LeaderboardResetMode.NEVER
@@ -27,3 +26,4 @@ class Guild(Model):
     started: int = 0
     started_at: str | None = None
     queue_empty_warned: int = 0
+    last_leaderboard_reset_at: str | None = None

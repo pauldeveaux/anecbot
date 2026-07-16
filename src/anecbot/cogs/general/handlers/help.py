@@ -7,7 +7,6 @@ ADMIN_GUIDE = (
     "- `/config interval` — intervalle entre les publications\n"
     "- `/config publish-time` — heure de publication\n"
     "- `/config days-off` — jours sans publication\n"
-    "- `/config reveal-mode` — mode de révélation (after-publish/interval)\n"
     "- `/config reveal-interval` — délai avant la révélation\n"
     "- `/config reveal-time` — heure de révélation\n"
     "- `/config leaderboard-reset-frequency` — fréquence de reset du leaderboard "

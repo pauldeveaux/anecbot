@@ -5,9 +5,10 @@ import aiosqlite
 
 from anecbot.features.next.repository import earliest_pending_reveal, last_published_at
 from anecbot.models.anecdote import Anecdote
-from anecbot.models.enums import LeaderboardResetMode, RevealMode
+from anecbot.models.enums import LeaderboardResetMode
 from anecbot.models.guild import Guild
 from anecbot.utils.time import (
+    next_leaderboard_reset_datetime,
     next_publication_datetime,
     next_reveal_datetime,
     parse_days_off,
@@ -20,9 +21,7 @@ class NextEvents:
 
     next_publication: datetime | None
     next_reveal: datetime | None
-    reveal_placeholder: bool
     next_leaderboard_reset: datetime | None
-    leaderboard_reset_placeholder: bool
     leaderboard_reset_hidden: bool
     pending_anecdotes: int
 
@@ -37,9 +36,7 @@ async def get_next_events(
         return NextEvents(
             next_publication=None,
             next_reveal=None,
-            reveal_placeholder=False,
             next_leaderboard_reset=None,
-            leaderboard_reset_placeholder=False,
             leaderboard_reset_hidden=True,
             pending_anecdotes=0,
         )
@@ -54,28 +51,35 @@ async def get_next_events(
     )
 
     next_rev: datetime | None = None
-    reveal_placeholder = False
-    if guild.reveal_mode == RevealMode.AFTER_PUBLISH:
-        earliest_str = await earliest_pending_reveal(db, guild_id)
-        if earliest_str:
-            earliest = datetime.fromisoformat(earliest_str)
-            next_rev = next_reveal_datetime(
-                earliest, guild.reveal_interval_days, guild.reveal_time, days_off
-            )
-    else:
-        reveal_placeholder = True
+    earliest_str = await earliest_pending_reveal(db, guild_id)
+    if earliest_str:
+        earliest = datetime.fromisoformat(earliest_str)
+        next_rev = next_reveal_datetime(
+            earliest, guild.reveal_interval_days, guild.reveal_time, days_off
+        )
 
     leaderboard_reset_hidden = (
         guild.leaderboard_reset_mode == LeaderboardResetMode.NEVER
     )
-    leaderboard_reset_placeholder = not leaderboard_reset_hidden
+    next_reset: datetime | None = None
+    if not leaderboard_reset_hidden:
+        last_reset = (
+            datetime.fromisoformat(guild.last_leaderboard_reset_at)
+            if guild.last_leaderboard_reset_at
+            else None
+        )
+        next_reset = next_leaderboard_reset_datetime(
+            last_reset,
+            guild.leaderboard_reset_mode,
+            guild.leaderboard_reset_interval,
+            guild.leaderboard_reset_anchor,
+            now,
+        )
 
     return NextEvents(
         next_publication=next_pub,
         next_reveal=next_rev,
-        reveal_placeholder=reveal_placeholder,
-        next_leaderboard_reset=None,
-        leaderboard_reset_placeholder=leaderboard_reset_placeholder,
+        next_leaderboard_reset=next_reset,
         leaderboard_reset_hidden=leaderboard_reset_hidden,
         pending_anecdotes=pending_count,
     )

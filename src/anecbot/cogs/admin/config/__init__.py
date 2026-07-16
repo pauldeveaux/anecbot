@@ -13,11 +13,10 @@ from anecbot.cogs.admin.config.handlers import (
     publish_time,
     reset,
     reveal_interval,
-    reveal_mode,
     reveal_time,
     show,
 )
-from anecbot.models.enums import LeaderboardResetMode, RevealMode
+from anecbot.models.enums import LeaderboardResetMode
 
 
 class ConfigCog(AdminCog):
@@ -62,23 +61,6 @@ class ConfigCog(AdminCog):
     async def config_days_off(self, interaction: discord.Interaction, jours: str = ""):
         """Set the days off."""
         await days_off.handle(interaction, jours)
-
-    @config.command(
-        name="reveal-mode",
-        description="Définir le mode de révélation",
-    )
-    @app_commands.describe(mode="Quand révéler les anecdotes publiées")
-    @app_commands.choices(
-        mode=[
-            app_commands.Choice(name=label, value=mode.value)
-            for mode, label in reveal_mode.MODE_LABELS.items()
-        ]
-    )
-    async def config_reveal_mode(
-        self, interaction: discord.Interaction, mode: RevealMode
-    ):
-        """Set the reveal mode."""
-        await reveal_mode.handle(interaction, mode)
 
     @config.command(
         name="reveal-interval",

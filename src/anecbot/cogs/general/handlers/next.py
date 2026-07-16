@@ -5,7 +5,7 @@ from anecbot.utils.time import discord_timestamp_full_relative as ts, utcnow
 
 
 def build_next_embed(events: NextEvents) -> discord.Embed:
-    """Build a public embed with upcoming scheduled events."""
+    """Build an embed with upcoming scheduled events."""
     embed = discord.Embed(
         title="Prochains événements",
         color=discord.Color.blue(),
@@ -27,9 +27,7 @@ def build_next_embed(events: NextEvents) -> discord.Embed:
         inline=True,
     )
 
-    if events.reveal_placeholder:
-        reveal_value = "À venir"
-    elif events.next_reveal:
+    if events.next_reveal:
         reveal_value = ts(events.next_reveal)
     else:
         reveal_value = "Aucune révélation en attente"
@@ -41,16 +39,10 @@ def build_next_embed(events: NextEvents) -> discord.Embed:
     )
 
     if not events.leaderboard_reset_hidden:
-        if events.leaderboard_reset_placeholder:
-            reset_value = "À venir"
-        elif events.next_leaderboard_reset:
-            reset_value = ts(events.next_leaderboard_reset)
-        else:
-            reset_value = "—"
-
+        assert events.next_leaderboard_reset is not None
         embed.add_field(
             name="\U0001f504 Prochain reset du leaderboard",
-            value=reset_value,
+            value=ts(events.next_leaderboard_reset),
             inline=True,
         )
 
@@ -64,4 +56,4 @@ async def handle(interaction: discord.Interaction):
     now = utcnow()
     events = await get_next_events(db, interaction.guild_id, now)
     embed = build_next_embed(events)
-    await interaction.response.send_message(embed=embed)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
