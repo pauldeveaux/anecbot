@@ -1,3 +1,5 @@
+import logging
+
 import discord
 
 from anecbot.features.player.service import MAX_TARGETS
@@ -5,6 +7,8 @@ from anecbot.features.vote.service import record_vote
 from anecbot.models.enums import VoteResult
 from anecbot.models.player import Player
 from anecbot.utils.player import display_name
+
+logger = logging.getLogger(__name__)
 
 
 class McqView(discord.ui.View):
@@ -25,7 +29,7 @@ class McqView(discord.ui.View):
         self.add_item(self.select)
 
     async def _on_vote(self, interaction: discord.Interaction):
-        """Record the vote and acknowledge, or reject if voting has closed."""
+        """Record the vote, confirm the guess, and DM a reminder with a link to the message."""
         target_id = int(self.select.values[0])
         db = interaction.client.db  # type: ignore[attr-defined]
         result = await record_vote(db, self.anecdote_id, interaction.user.id, target_id)
@@ -36,4 +40,21 @@ class McqView(discord.ui.View):
             )
             return
 
-        await interaction.response.send_message("✅ Vote enregistré !", ephemeral=True)
+        assert interaction.guild_id is not None
+        guessed = await Player.get(db, interaction.guild_id, target_id)
+        guessed_name = (
+            display_name(guessed, interaction.guild) if guessed else str(target_id)
+        )
+
+        await interaction.response.send_message(
+            f"✅ Vote enregistré : **{guessed_name}**", ephemeral=True
+        )
+
+        if interaction.message is not None:
+            try:
+                await interaction.user.send(
+                    f"🗳️ Tu as voté pour **{guessed_name}** sur cette anecdote : "
+                    f"{interaction.message.jump_url}"
+                )
+            except discord.Forbidden:
+                logger.debug("Cannot DM user %s (DMs disabled)", interaction.user.id)

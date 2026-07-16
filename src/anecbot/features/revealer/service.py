@@ -9,7 +9,10 @@ from anecbot.models.guild import Guild
 from anecbot.models.player import Player
 from anecbot.models.vote import Vote
 from anecbot.utils.player import display_name
+from anecbot.utils.text import ZERO_WIDTH_SPACE, with_blank_lines
 from anecbot.utils.time import next_reveal_datetime, parse_days_off
+
+MAX_VOTES_FIELD_LENGTH = 1000  # stay under Discord's 1024-char embed field value limit
 
 
 async def get_due_reveals(
@@ -42,10 +45,9 @@ def build_reveal_embed(
     discord_guild: discord.Guild | None,
 ) -> discord.Embed:
     """Build the embed showing the anecdote's content, votes summary, and spoiler answer."""
-    embed = discord.Embed(
-        title="🔍 Révélation !",
-        description=anecdote.content,
-        color=discord.Color.purple(),
+    embed = discord.Embed(title="🔍 Révélation !", color=discord.Color.purple())
+    embed.add_field(
+        name=ZERO_WIDTH_SPACE, value=with_blank_lines(anecdote.content), inline=False
     )
 
     if votes:
@@ -64,22 +66,25 @@ def build_reveal_embed(
             mark = "✅" if vote.voted_for_id == anecdote.target_id else "❌"
             lines.append(f"{mark} {voter_name} → {guessed_name}")
         votes_value = "\n".join(lines)
+        if len(votes_value) > MAX_VOTES_FIELD_LENGTH:
+            correct = sum(1 for v in votes if v.voted_for_id == anecdote.target_id)
+            votes_value = f"✅ {correct}/{len(votes)} ont deviné juste"
     else:
         votes_value = "Aucun vote."
 
-    embed.add_field(name="Votes", value=votes_value, inline=False)
+    embed.add_field(name="🗳️ Votes", value=votes_value, inline=False)
 
     target = players.get(anecdote.target_id)
     target_name = (
         display_name(target, discord_guild) if target else str(anecdote.target_id)
     )
-    embed.add_field(name="Réponse", value=f"|| {target_name} ||", inline=False)
+    embed.add_field(name="🎯 Réponse", value=f"|| {target_name} ||", inline=True)
 
     author = players.get(anecdote.author_id)
     author_name = (
         display_name(author, discord_guild) if author else str(anecdote.author_id)
     )
-    embed.add_field(name="Auteur", value=author_name, inline=False)
+    embed.add_field(name="✍️ Auteur", value=author_name, inline=True)
 
     return embed
 

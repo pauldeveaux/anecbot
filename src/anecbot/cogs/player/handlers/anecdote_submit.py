@@ -9,6 +9,7 @@ from anecbot.features.player.service import (
 from anecbot.models.player import Player
 from anecbot.shared.views.guild_select import GuildSelectView
 from anecbot.utils.player import display_name
+from anecbot.utils.text import with_blank_lines
 
 
 class TargetSelectView(discord.ui.View):
@@ -111,7 +112,9 @@ class AnecdoteModal(discord.ui.Modal, title="Soumettre une anecdote"):
         assert target is not None
         text = str(self.content)
 
-        embed = discord.Embed(title="Confirme ta soumission", description=text)
+        embed = discord.Embed(
+            title="Confirme ta soumission", description=with_blank_lines(text)
+        )
         embed.add_field(name="Serveur", value=self.guild.name, inline=True)
         embed.add_field(
             name="Cible", value=display_name(target, self.guild), inline=True

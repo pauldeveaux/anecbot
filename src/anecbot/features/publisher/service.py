@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import cast
 
 import aiosqlite
@@ -7,7 +8,13 @@ from anecbot.features.player.service import get_active_targets
 from anecbot.features.publisher.views import McqView
 from anecbot.models.anecdote import Anecdote
 from anecbot.models.guild import Guild
-from anecbot.utils.time import utcnow
+from anecbot.utils.text import ZERO_WIDTH_SPACE, with_blank_lines
+from anecbot.utils.time import (
+    discord_timestamp_full_relative,
+    next_reveal_datetime,
+    parse_days_off,
+    utcnow,
+)
 
 
 async def get_next_pending_anecdote(
@@ -20,13 +27,21 @@ async def get_next_pending_anecdote(
     return min(anecdotes, key=lambda a: (a.created_at, a.id))
 
 
-def build_anecdote_embed(anecdote: Anecdote) -> discord.Embed:
-    """Build the embed announcing a new anecdote (content only, no target/author)."""
-    return discord.Embed(
-        title="📝 Nouvelle anecdote !",
-        description=anecdote.content,
-        color=discord.Color.blue(),
+def build_anecdote_embed(
+    anecdote: Anecdote, reveal_at: datetime | None = None
+) -> discord.Embed:
+    """Build the embed announcing a new anecdote, with an optional reveal date."""
+    embed = discord.Embed(title="📝 Nouvelle anecdote !", color=discord.Color.blue())
+    embed.add_field(
+        name=ZERO_WIDTH_SPACE, value=with_blank_lines(anecdote.content), inline=False
     )
+    if reveal_at is not None:
+        embed.add_field(
+            name="🔍 Révélation prévue",
+            value=discord_timestamp_full_relative(reveal_at),
+            inline=False,
+        )
+    return embed
 
 
 async def publish_next_anecdote(
@@ -85,10 +100,44 @@ async def publish_and_open_voting(
     assert channel is not None
     message = await channel.fetch_message(anecdote.anecdote_message_id)
 
+    published_at = utcnow()
+    days_off = parse_days_off(guild.days_off)
+    reveal_at = next_reveal_datetime(
+        published_at, guild.reveal_interval_days, guild.reveal_time, days_off
+    )
+
     targets = await get_active_targets(db, guild_id)
     view = McqView(anecdote.id, targets, discord_guild)
-    await message.edit(view=view)
+    embed = build_anecdote_embed(anecdote, reveal_at)
+    await message.edit(embed=embed, view=view)
 
     return await Anecdote.update(
-        db, anecdote.id, state="PUBLISHED", published_at=utcnow().isoformat()
+        db, anecdote.id, state="PUBLISHED", published_at=published_at.isoformat()
     )
+
+
+async def refresh_published_reveal_dates(
+    bot: discord.Client, db: aiosqlite.Connection, guild_id: int
+) -> None:
+    """Update the displayed reveal date on every PUBLISHED anecdote's message."""
+    guild = await Guild.get(db, guild_id)
+    if guild is None or guild.channel_id is None:
+        return
+
+    channel = cast("discord.abc.Messageable | None", bot.get_channel(guild.channel_id))
+    if channel is None:
+        return
+
+    days_off = parse_days_off(guild.days_off)
+    published = await Anecdote.list(db, guild_id=guild_id, state="PUBLISHED")
+
+    for anecdote in published:
+        if anecdote.anecdote_message_id is None or anecdote.published_at is None:
+            continue
+        published_at = datetime.fromisoformat(anecdote.published_at)
+        reveal_at = next_reveal_datetime(
+            published_at, guild.reveal_interval_days, guild.reveal_time, days_off
+        )
+        message = await channel.fetch_message(anecdote.anecdote_message_id)
+        embed = build_anecdote_embed(anecdote, reveal_at)
+        await message.edit(embed=embed)

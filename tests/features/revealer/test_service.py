@@ -18,6 +18,7 @@ from anecbot.models.database import run_migrations
 from anecbot.models.guild import Guild
 from anecbot.models.player import Player
 from anecbot.models.vote import Vote
+from anecbot.utils.text import with_blank_lines
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[3] / "migrations"
 GUILD_ID = 100
@@ -180,14 +181,15 @@ def test_build_reveal_embed_shows_votes_and_spoiler():
 
     embed = build_reveal_embed(anecdote, votes, players, None)
 
-    assert embed.description == "Un truc drôle"
-    votes_field = next(f for f in embed.fields if f.name == "Votes")
+    content_field = embed.fields[0]
+    assert content_field.value == with_blank_lines("Un truc drôle")
+    votes_field = next(f for f in embed.fields if f.name == "🗳️ Votes")
     assert "✅" in (votes_field.value or "")
     assert "Votant" in (votes_field.value or "")
     assert "Cible" in (votes_field.value or "")
-    answer_field = next(f for f in embed.fields if f.name == "Réponse")
+    answer_field = next(f for f in embed.fields if f.name == "🎯 Réponse")
     assert answer_field.value == "|| Cible ||"
-    author_field = next(f for f in embed.fields if f.name == "Auteur")
+    author_field = next(f for f in embed.fields if f.name == "✍️ Auteur")
     assert author_field.value == "Auteur"
 
 
@@ -199,8 +201,28 @@ def test_build_reveal_embed_no_votes():
 
     embed = build_reveal_embed(anecdote, [], {}, None)
 
-    votes_field = next(f for f in embed.fields if f.name == "Votes")
+    votes_field = next(f for f in embed.fields if f.name == "🗳️ Votes")
     assert votes_field.value == "Aucun vote."
+
+
+def test_build_reveal_embed_falls_back_to_count_when_votes_list_too_long():
+    """Beyond the field length cap, the per-voter list is replaced by a numeric summary."""
+    anecdote = Anecdote(
+        id=1, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
+    )
+    players = {
+        i: Player(guild_id=GUILD_ID, user_id=i, alias=f"Joueur avec un nom long {i}")
+        for i in range(100)
+    }
+    votes = [
+        Vote(anecdote_id=1, user_id=i, voted_for_id=TARGET_ID if i % 2 == 0 else i)
+        for i in range(100)
+    ]
+
+    embed = build_reveal_embed(anecdote, votes, players, None)
+
+    votes_field = next(f for f in embed.fields if f.name == "🗳️ Votes")
+    assert votes_field.value == "✅ 50/100 ont deviné juste"
 
 
 @pytest.mark.asyncio
@@ -217,7 +239,8 @@ async def test_reveal_anecdote_transitions_to_revealed(db, players):
     assert result.state == "REVEALED"
     assert message.edit_kwargs == {"view": None}
     assert message.reply_embed is not None
-    assert message.reply_embed.description == "Un truc"
+    content_field = message.reply_embed.fields[0]
+    assert content_field.value == with_blank_lines("Un truc")
 
     stored = await Anecdote.get(db, anecdote.id)
     assert stored is not None
