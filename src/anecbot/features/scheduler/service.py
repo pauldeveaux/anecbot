@@ -6,7 +6,10 @@ import discord
 
 from anecbot.features.leaderboard.service import publish_leaderboard, reset_leaderboard
 from anecbot.features.next.repository import last_published_at
-from anecbot.features.publisher.service import publish_and_open_voting
+from anecbot.features.publisher.service import (
+    publish_and_open_voting,
+    recover_stuck_publications,
+)
 from anecbot.features.revealer.service import reveal_due_anecdotes
 from anecbot.models.enums import LeaderboardResetMode
 from anecbot.models.guild import Guild
@@ -47,6 +50,8 @@ async def check_publication_for_guild(
     """Trigger publication for the guild if due. Returns whether it was triggered."""
     if not guild.started or guild.channel_id is None:
         return False
+
+    await recover_stuck_publications(bot, db, guild.guild_id)
 
     days_off = parse_days_off(guild.days_off)
     last_pub_str = await last_published_at(db, guild.guild_id)

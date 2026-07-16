@@ -20,3 +20,4 @@ class Anecdote(Model):
     created_at: str = ""
     published_at: str | None = None
     anecdote_message_id: int | None = None
+    reveal_message_id: int | None = None
