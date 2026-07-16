@@ -40,6 +40,12 @@ class McqView(discord.ui.View):
             )
             return
 
+        if result == VoteResult.IS_AUTHOR:
+            await interaction.response.send_message(
+                "❌ Tu ne peux pas voter sur ta propre anecdote.", ephemeral=True
+            )
+            return
+
         assert interaction.guild_id is not None
         guessed = await Player.get(db, interaction.guild_id, target_id)
         guessed_name = (

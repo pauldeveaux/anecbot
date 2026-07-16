@@ -14,6 +14,9 @@ async def record_vote(
     if anecdote is None or anecdote.state != "PUBLISHED":
         return VoteResult.CLOSED
 
+    if voter_id == anecdote.author_id:
+        return VoteResult.IS_AUTHOR
+
     existing = await Player.get(db, anecdote.guild_id, voter_id)
     if existing is None:
         await Player.upsert(

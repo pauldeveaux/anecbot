@@ -32,3 +32,4 @@ class VoteResult(StrEnum):
 
     RECORDED = "recorded"
     CLOSED = "closed"
+    IS_AUTHOR = "is_author"
