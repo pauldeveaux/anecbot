@@ -5,7 +5,7 @@ from anecbot.utils.time import discord_timestamp
 
 
 def build_stats_embed(stats: GuildStats) -> discord.Embed:
-    """Build a public embed with game statistics."""
+    """Build an embed with game statistics."""
     state_label = "En cours" if stats.started else "Arrêté"
     state_emoji = "\U0001f7e2" if stats.started else "\U0001f534"
 
@@ -44,9 +44,9 @@ def build_stats_embed(stats: GuildStats) -> discord.Embed:
 
 
 async def handle(interaction: discord.Interaction):
-    """Show public game statistics for this guild."""
+    """Show game statistics for this guild."""
     assert interaction.guild_id is not None
     db = interaction.client.db  # type: ignore[attr-defined]
     stats = await get_guild_stats(db, interaction.guild_id)
     embed = build_stats_embed(stats)
-    await interaction.response.send_message(embed=embed)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
