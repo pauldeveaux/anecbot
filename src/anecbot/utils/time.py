@@ -130,14 +130,14 @@ def next_reveal_datetime(
     return to_utc(datetime.combine(target_date, rev_time), tz)
 
 
-def _add_months(year: int, month: int, months: int) -> tuple[int, int]:
+def add_months(year: int, month: int, months: int) -> tuple[int, int]:
     """Add a number of months to a (year, month) pair, returning the new pair."""
     total = year * 12 + (month - 1) + months
     new_year, new_month0 = divmod(total, 12)
     return new_year, new_month0 + 1
 
 
-def _clamped_month_date(year: int, month: int, day: int) -> date:
+def clamped_month_date(year: int, month: int, day: int) -> date:
     """Return a date for (year, month, day), clamping day to the month's last valid day."""
     last_day = calendar.monthrange(year, month)[1]
     return date(year, month, min(day, last_day))
@@ -177,11 +177,11 @@ def next_leaderboard_reset_datetime(
         if local_last is None:
             year, month = local_now.year, local_now.month
             if local_now.day > anchor:
-                year, month = _add_months(year, month, interval)
+                year, month = add_months(year, month, interval)
         else:
-            year, month = _add_months(local_last.year, local_last.month, interval)
+            year, month = add_months(local_last.year, local_last.month, interval)
         return to_utc(
-            datetime.combine(_clamped_month_date(year, month, anchor), time()), tz
+            datetime.combine(clamped_month_date(year, month, anchor), time()), tz
         )
 
     assert anchor is not None

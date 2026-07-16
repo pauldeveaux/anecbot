@@ -7,7 +7,11 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
-from anecbot.features.scheduler.service import check_publications
+from anecbot.features.scheduler.service import (
+    check_leaderboard_resets,
+    check_publications,
+    check_reveals,
+)
 from anecbot.utils.config import Settings
 from anecbot.utils.time import utcnow
 from anecbot.models.database import close_db, init_db
@@ -41,15 +45,17 @@ def create_bot(settings: Settings) -> Bot:
         )
 
     @tasks.loop(minutes=1)
-    async def publication_loop() -> None:
-        """Check every started guild and trigger publication where due."""
+    async def batch_loop() -> None:
+        """Run one batch tick: publications, then reveals, then leaderboard resets."""
         try:
             await check_publications(bot, bot.db, utcnow())
+            await check_reveals(bot, bot.db, utcnow())
+            await check_leaderboard_resets(bot, bot.db, utcnow())
         except Exception:
-            logger.exception("Publication batch failed")
+            logger.exception("Batch tick failed")
 
-    @publication_loop.before_loop
-    async def before_publication_loop() -> None:
+    @batch_loop.before_loop
+    async def before_batch_loop() -> None:
         """Wait for the bot to be ready, then align the first tick to the next round minute."""
         await bot.wait_until_ready()
         now = utcnow()
@@ -61,7 +67,7 @@ def create_bot(settings: Settings) -> Bot:
         logger.info("Database initialized")
         await bot.load_extension("anecbot.cogs")
         logger.info("Cogs loaded")
-        publication_loop.start()
+        batch_loop.start()
 
     bot.setup_hook = setup_hook
 
@@ -102,7 +108,7 @@ def create_bot(settings: Settings) -> Bot:
 
     async def close() -> None:
         """Stop background tasks and close the database connection before shutting down."""
-        publication_loop.cancel()
+        batch_loop.cancel()
         if hasattr(bot, "db"):
             await close_db(bot.db)
         await _original_close()
