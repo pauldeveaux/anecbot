@@ -5,7 +5,7 @@ from anecbot.utils.time import discord_timestamp_full_relative as ts, utcnow
 
 
 def build_next_embed(events: NextEvents) -> discord.Embed:
-    """Build a public embed with upcoming scheduled events."""
+    """Build an embed with upcoming scheduled events."""
     embed = discord.Embed(
         title="Prochains événements",
         color=discord.Color.blue(),
@@ -62,4 +62,4 @@ async def handle(interaction: discord.Interaction):
     now = utcnow()
     events = await get_next_events(db, interaction.guild_id, now)
     embed = build_next_embed(events)
-    await interaction.response.send_message(embed=embed)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
