@@ -73,7 +73,7 @@ async def _show_targets_or_error(
         content = f"❌ Tu n'es pas inscrit(e) comme rédacteur sur **{guild.name}**."
         view = None
     else:
-        targets = await get_active_targets(db, guild_id, exclude_user_id=user_id)
+        targets = await get_active_targets(db, guild_id)
         if not targets:
             content = f"❌ Aucune cible disponible sur **{guild.name}**."
             view = None
