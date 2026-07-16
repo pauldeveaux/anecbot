@@ -1,7 +1,7 @@
 import discord
 
 from anecbot.cogs.admin.base import get_db
-from anecbot.models.enums import LeaderboardResetMode
+from anecbot.models.enums import GuildTimezone, LeaderboardResetMode
 from anecbot.models.guild import Guild
 
 
@@ -27,6 +27,7 @@ class ConfigResetView(discord.ui.View):
             days_off="",
             reveal_interval_days=1,
             reveal_time="13:30",
+            timezone=GuildTimezone.EUROPE_PARIS,
             leaderboard_reset_mode=LeaderboardResetMode.NEVER,
             leaderboard_reset_interval=1,
             leaderboard_reset_anchor=None,

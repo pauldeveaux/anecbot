@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import cast
+from zoneinfo import ZoneInfo
 
 import aiosqlite
 import discord
@@ -25,6 +26,7 @@ async def get_due_reveals(
         return []
 
     days_off = parse_days_off(guild.days_off)
+    tz = ZoneInfo(guild.timezone)
     published = await Anecdote.list(db, guild_id=guild_id, state="PUBLISHED")
 
     due = []
@@ -32,7 +34,7 @@ async def get_due_reveals(
         assert anecdote.published_at is not None
         published_at = datetime.fromisoformat(anecdote.published_at)
         reveal_at = next_reveal_datetime(
-            published_at, guild.reveal_interval_days, guild.reveal_time, days_off
+            published_at, guild.reveal_interval_days, guild.reveal_time, days_off, tz
         )
         if reveal_at <= now:
             due.append(anecdote)

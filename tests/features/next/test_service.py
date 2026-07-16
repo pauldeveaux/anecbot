@@ -6,7 +6,7 @@ import pytest
 import pytest_asyncio
 
 from anecbot.models.database import run_migrations
-from anecbot.models.enums import LeaderboardResetMode
+from anecbot.models.enums import GuildTimezone, LeaderboardResetMode
 from anecbot.models.guild import Guild
 from anecbot.models.player import Player
 from anecbot.features.next.service import get_next_events
@@ -28,7 +28,9 @@ async def db():
 @pytest.mark.asyncio
 async def test_game_not_started(db):
     """No events when game is stopped."""
-    await Guild.upsert(db, GUILD_ID, channel_id=1, started=0)
+    await Guild.upsert(
+        db, GUILD_ID, channel_id=1, started=0, timezone=GuildTimezone.UTC
+    )
     now = datetime(2026, 7, 15, 10, 0)
     events = await get_next_events(db, GUILD_ID, now)
     assert events.next_publication is None
@@ -39,7 +41,7 @@ async def test_game_not_started(db):
 @pytest.mark.asyncio
 async def test_game_no_channel(db):
     """No events when no channel configured."""
-    await Guild.upsert(db, GUILD_ID, started=1)
+    await Guild.upsert(db, GUILD_ID, started=1, timezone=GuildTimezone.UTC)
     now = datetime(2026, 7, 15, 10, 0)
     events = await get_next_events(db, GUILD_ID, now)
     assert events.next_publication is None
@@ -57,7 +59,13 @@ async def test_no_guild(db):
 async def test_first_publication(db):
     """Next publication when no anecdotes published yet."""
     await Guild.upsert(
-        db, GUILD_ID, channel_id=1, started=1, publish_time="15:00", interval_days=1
+        db,
+        GUILD_ID,
+        channel_id=1,
+        started=1,
+        publish_time="15:00",
+        interval_days=1,
+        timezone=GuildTimezone.UTC,
     )
     now = datetime(2026, 7, 15, 10, 0)
     events = await get_next_events(db, GUILD_ID, now)
@@ -75,6 +83,7 @@ async def test_publication_after_previous(db):
         publish_time="15:00",
         interval_days=2,
         days_off="",
+        timezone=GuildTimezone.UTC,
     )
     await _add_player(db, GUILD_ID, 1)
     await _add_player(db, GUILD_ID, 2)
@@ -98,6 +107,7 @@ async def test_reveal_after_publish_mode(db):
         reveal_interval_days=1,
         reveal_time="13:30",
         days_off="",
+        timezone=GuildTimezone.UTC,
     )
     await _add_player(db, GUILD_ID, 1)
     await _add_player(db, GUILD_ID, 2)
@@ -150,6 +160,7 @@ async def test_leaderboard_reset_non_never_computed(db):
         started=1,
         leaderboard_reset_mode=LeaderboardResetMode.MONTHLY,
         leaderboard_reset_anchor=1,
+        timezone=GuildTimezone.UTC,
     )
     now = datetime(2026, 7, 15, 10, 0)  # day 15 > anchor 1 → next month
     events = await get_next_events(db, GUILD_ID, now)
@@ -168,6 +179,7 @@ async def test_leaderboard_reset_uses_last_reset(db):
         leaderboard_reset_mode=LeaderboardResetMode.MONTHLY,
         leaderboard_reset_anchor=1,
         last_leaderboard_reset_at="2026-07-01T00:00:00",
+        timezone=GuildTimezone.UTC,
     )
     now = datetime(2026, 7, 15, 10, 0)
     events = await get_next_events(db, GUILD_ID, now)
@@ -185,6 +197,7 @@ async def test_revealed_anecdotes_count_for_last_published(db):
         publish_time="15:00",
         interval_days=1,
         days_off="",
+        timezone=GuildTimezone.UTC,
     )
     await _add_player(db, GUILD_ID, 1)
     await _add_player(db, GUILD_ID, 2)

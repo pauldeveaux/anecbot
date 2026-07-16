@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import ClassVar
 
 from anecbot.models.base import Model
-from anecbot.models.enums import LeaderboardResetMode
+from anecbot.models.enums import GuildTimezone, LeaderboardResetMode
 
 
 @dataclass
@@ -27,3 +27,4 @@ class Guild(Model):
     started_at: str | None = None
     queue_empty_warned: int = 0
     last_leaderboard_reset_at: str | None = None
+    timezone: GuildTimezone = GuildTimezone.EUROPE_PARIS

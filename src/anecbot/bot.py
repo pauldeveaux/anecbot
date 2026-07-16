@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from pathlib import Path
 
@@ -41,19 +42,18 @@ def create_bot(settings: Settings) -> Bot:
 
     @tasks.loop(minutes=1)
     async def publication_loop() -> None:
-        """Check every started guild and trigger publication where due, logging each tick."""
-        now = utcnow()
-        logger.info("Publication batch tick at %s", now.isoformat())
+        """Check every started guild and trigger publication where due."""
         try:
-            triggered = await check_publications(bot, bot.db, now)
-            logger.info("Publication batch: triggered %d guild(s)", triggered)
+            await check_publications(bot, bot.db, utcnow())
         except Exception:
             logger.exception("Publication batch failed")
 
     @publication_loop.before_loop
     async def before_publication_loop() -> None:
-        """Wait for the bot to be ready before the first tick."""
+        """Wait for the bot to be ready, then align the first tick to the next round minute."""
         await bot.wait_until_ready()
+        now = utcnow()
+        await asyncio.sleep(60 - now.second - now.microsecond / 1_000_000)
 
     async def setup_hook() -> None:
         """Initialize the database, load cogs, and start background tasks."""

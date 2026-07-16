@@ -8,6 +8,7 @@ from anecbot.cogs.admin.config.leaderboard_reset_format import (
 from anecbot.cogs.admin.config.handlers.leaderboard_reset_mode import (
     MODE_LABELS as LEADERBOARD_RESET_MODE_LABELS,
 )
+from anecbot.cogs.admin.config.handlers.timezone import MODE_LABELS as TIMEZONE_LABELS
 from anecbot.models.enums import LeaderboardResetMode
 from anecbot.models.guild import Guild
 
@@ -44,6 +45,9 @@ def build_config_embed(
         inline=True,
     )
     embed.add_field(name="Heure de révélation", value=guild.reveal_time, inline=True)
+    embed.add_field(
+        name="Fuseau horaire", value=TIMEZONE_LABELS[guild.timezone], inline=True
+    )
     embed.add_field(name="Limite quotidienne", value=daily_limit, inline=True)
     embed.add_field(
         name="Fréquence de reset du leaderboard",
