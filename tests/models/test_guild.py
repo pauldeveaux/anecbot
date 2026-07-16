@@ -5,7 +5,7 @@ import pytest
 import pytest_asyncio
 
 from anecbot.models.database import run_migrations
-from anecbot.models.enums import LeaderboardResetMode
+from anecbot.models.enums import GuildTimezone, LeaderboardResetMode
 from anecbot.models.guild import Guild
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations"
@@ -47,6 +47,7 @@ async def test_upsert_creates_with_defaults(db):
     assert result.started_at is None
     assert result.queue_empty_warned == 0
     assert result.last_leaderboard_reset_at is None
+    assert result.timezone == GuildTimezone.EUROPE_PARIS
 
 
 @pytest.mark.asyncio
@@ -123,6 +124,17 @@ async def test_upsert_updates_last_leaderboard_reset_at(db):
     fetched = await Guild.get(db, 123)
     assert fetched is not None
     assert fetched.last_leaderboard_reset_at == "2026-01-02T00:00:00"
+
+
+@pytest.mark.asyncio
+async def test_upsert_updates_timezone(db):
+    """Guild.upsert updates and persists the timezone."""
+    await Guild.upsert(db, 123)
+    result = await Guild.upsert(db, 123, timezone=GuildTimezone.AMERICA_NEW_YORK)
+    assert result.timezone == GuildTimezone.AMERICA_NEW_YORK
+    fetched = await Guild.get(db, 123)
+    assert fetched is not None
+    assert fetched.timezone == GuildTimezone.AMERICA_NEW_YORK
 
 
 @pytest.mark.asyncio

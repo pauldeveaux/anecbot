@@ -9,6 +9,7 @@ ADMIN_GUIDE = (
     "- `/config days-off` — jours sans publication\n"
     "- `/config reveal-interval` — délai avant la révélation\n"
     "- `/config reveal-time` — heure de révélation\n"
+    "- `/config timezone` — fuseau horaire du serveur (ex: Europe/Paris)\n"
     "- `/config leaderboard-reset-frequency` — fréquence de reset du leaderboard "
     "(daily/weekly/monthly/yearly)\n"
     "- `/config leaderboard-every` — tous les combien (ex: tous les 2 mois)\n"

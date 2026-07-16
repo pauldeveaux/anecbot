@@ -1,4 +1,5 @@
 from datetime import date, datetime, time, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -12,9 +13,12 @@ from anecbot.utils.time import (
     next_reveal_datetime,
     parse_days_off,
     parse_time,
+    to_local,
+    to_utc,
 )
 
 WEEKEND = {5, 6}  # Saturday, Sunday
+PARIS = ZoneInfo("Europe/Paris")
 
 
 # --- discord_timestamp / discord_timestamp_full_relative ---
@@ -47,6 +51,106 @@ def test_discord_timestamp_treats_naive_datetime_as_utc():
     result = discord_timestamp(iso)
 
     assert result == f"<t:{expected_unix}:f>"
+
+
+# --- to_local / to_utc ---
+
+
+def test_to_local_converts_utc_to_local():
+    """23:00 UTC becomes 01:00 the next day in Paris (CEST, UTC+2 in July)."""
+    dt = datetime(2026, 7, 13, 23, 0)
+    assert to_local(dt, PARIS) == datetime(2026, 7, 14, 1, 0)
+
+
+def test_to_utc_converts_local_to_utc():
+    """01:00 Paris local becomes 23:00 UTC the previous day."""
+    dt = datetime(2026, 7, 14, 1, 0)
+    assert to_utc(dt, PARIS) == datetime(2026, 7, 13, 23, 0)
+
+
+def test_to_local_to_utc_roundtrip_is_identity():
+    """Converting to local and back to UTC returns the original value."""
+    dt = datetime(2026, 7, 13, 23, 0)
+    assert to_utc(to_local(dt, PARIS), PARIS) == dt
+
+
+# --- to_local / to_utc — DST transitions (Europe/Paris, 2026: spring-forward 03-29, fall-back 10-25) ---
+
+
+def test_to_local_spring_forward_gap_jumps_straight_over():
+    """The 02:00-03:00 local hour doesn't exist on spring-forward day; to_local never lands in it."""
+    just_before = to_local(datetime(2026, 3, 29, 0, 59), PARIS)
+    at_transition = to_local(datetime(2026, 3, 29, 1, 0), PARIS)
+
+    assert just_before == datetime(2026, 3, 29, 1, 59)  # 01:59 CET
+    assert at_transition == datetime(2026, 3, 29, 3, 0)  # jumps to 03:00 CEST
+
+
+def test_to_utc_nonexistent_local_time_uses_pre_transition_offset():
+    """A local time that doesn't exist (inside the spring-forward gap) doesn't raise.
+
+    02:30 never happens on 2026-03-29 (clocks jump 01:59 CET -> 03:00 CEST). Python resolves
+    it using the offset in effect just before the transition (CET, UTC+1), rather than raising.
+    Not "correct" in any absolute sense — there's no right answer for a time that never
+    happened — but documenting the actual (non-crashing) behavior here.
+    """
+    gap_local = datetime(2026, 3, 29, 2, 30)
+
+    result = to_utc(gap_local, PARIS)
+
+    assert result == datetime(2026, 3, 29, 1, 30)  # treated as 02:30 CET (UTC+1)
+
+
+def test_to_utc_ambiguous_local_time_defaults_to_first_occurrence():
+    """A local time that happens twice (fall-back) resolves to the earlier UTC instant by default.
+
+    02:30 occurs twice on 2026-10-25: once as CEST (UTC+2) before the fall-back, once as CET
+    (UTC+1) after. Without an explicit `fold`, Python defaults to fold=0 (the first/earlier
+    occurrence) -- doesn't raise, but this is worth locking in since the two interpretations are
+    a full hour apart.
+    """
+    ambiguous_local = datetime(2026, 10, 25, 2, 30)
+
+    result = to_utc(ambiguous_local, PARIS)
+
+    assert result == datetime(2026, 10, 25, 0, 30)  # first pass: CEST (UTC+2)
+
+
+# --- next_publication_datetime / next_reveal_datetime — timezone-aware ---
+
+
+def test_next_publication_datetime_respects_timezone_across_midnight():
+    """A last_published moment that's a different calendar day in local time changes the result."""
+    last = datetime(2026, 7, 13, 23, 0)  # 23:00 UTC Monday = 01:00 CEST Tuesday
+    now = datetime(2026, 7, 14, 10, 0)
+
+    result = next_publication_datetime(last, 1, "15:00", set(), now, PARIS)
+
+    # local last_published date is Tuesday 07-14 -> next active day (+1) = Wednesday 07-15
+    # 15:00 Paris (CEST) = 13:00 UTC
+    assert result == datetime(2026, 7, 15, 13, 0)
+
+
+def test_next_publication_datetime_utc_default_differs_from_timezone_aware():
+    """Same inputs without a tz (UTC default) give a genuinely different result."""
+    last = datetime(2026, 7, 13, 23, 0)
+    now = datetime(2026, 7, 14, 10, 0)
+
+    utc_result = next_publication_datetime(last, 1, "15:00", set(), now)
+
+    assert utc_result == datetime(2026, 7, 14, 15, 0)
+    assert utc_result != next_publication_datetime(last, 1, "15:00", set(), now, PARIS)
+
+
+def test_next_reveal_datetime_respects_timezone_across_midnight():
+    """Same cross-midnight effect for reveal scheduling."""
+    published_at = datetime(2026, 7, 13, 23, 0)  # 01:00 CEST Tuesday in Paris
+
+    result = next_reveal_datetime(published_at, 1, "13:30", set(), PARIS)
+
+    # local published_at date is Tuesday 07-14 -> next active day (+1) = Wednesday 07-15
+    # 13:30 Paris (CEST) = 11:30 UTC
+    assert result == datetime(2026, 7, 15, 11, 30)
 
 
 # --- parse_days_off ---
@@ -449,6 +553,23 @@ def test_leaderboard_weekly_subsequent():
         last, LeaderboardResetMode.WEEKLY, 2, 0, now
     )
     assert result == datetime(2026, 7, 27, 0, 0)  # 2 weeks later, still Monday
+
+
+def test_leaderboard_weekly_first_reset_respects_timezone_across_midnight():
+    """The midnight reset anchor is computed in the guild's local day, not UTC's."""
+    now = datetime(2026, 7, 13, 23, 0)  # 23:00 UTC Monday = 01:00 CEST Tuesday
+
+    result = next_leaderboard_reset_datetime(
+        None, LeaderboardResetMode.WEEKLY, 1, 1, now, PARIS
+    )
+
+    # local now is Tuesday (weekday=1), matching anchor=1 exactly -> today (local) at midnight
+    # midnight Paris (CEST) = 22:00 UTC the previous day
+    assert result == datetime(2026, 7, 13, 22, 0)
+    # a plain UTC interpretation would have landed on 2026-07-14 00:00 instead
+    assert result != next_leaderboard_reset_datetime(
+        None, LeaderboardResetMode.WEEKLY, 1, 1, now
+    )
 
 
 # --- next_leaderboard_reset_datetime — MONTHLY (anchor = day of month) ---

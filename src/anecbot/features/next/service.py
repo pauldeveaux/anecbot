@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import aiosqlite
 
@@ -43,11 +44,12 @@ async def get_next_events(
 
     pending_count = await Anecdote.count(db, guild_id=guild_id, state="PENDING")
     days_off = parse_days_off(guild.days_off)
+    tz = ZoneInfo(guild.timezone)
 
     last_pub_str = await last_published_at(db, guild_id)
     last_pub = datetime.fromisoformat(last_pub_str) if last_pub_str else None
     next_pub = next_publication_datetime(
-        last_pub, guild.interval_days, guild.publish_time, days_off, now
+        last_pub, guild.interval_days, guild.publish_time, days_off, now, tz
     )
 
     next_rev: datetime | None = None
@@ -55,7 +57,7 @@ async def get_next_events(
     if earliest_str:
         earliest = datetime.fromisoformat(earliest_str)
         next_rev = next_reveal_datetime(
-            earliest, guild.reveal_interval_days, guild.reveal_time, days_off
+            earliest, guild.reveal_interval_days, guild.reveal_time, days_off, tz
         )
 
     leaderboard_reset_hidden = (
@@ -74,6 +76,7 @@ async def get_next_events(
             guild.leaderboard_reset_interval,
             guild.leaderboard_reset_anchor,
             now,
+            tz,
         )
 
     return NextEvents(

@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import cast
+from zoneinfo import ZoneInfo
 
 import aiosqlite
 import discord
@@ -103,7 +104,11 @@ async def publish_and_open_voting(
     published_at = utcnow()
     days_off = parse_days_off(guild.days_off)
     reveal_at = next_reveal_datetime(
-        published_at, guild.reveal_interval_days, guild.reveal_time, days_off
+        published_at,
+        guild.reveal_interval_days,
+        guild.reveal_time,
+        days_off,
+        ZoneInfo(guild.timezone),
     )
 
     targets = await get_active_targets(db, guild_id)
@@ -129,6 +134,7 @@ async def refresh_published_reveal_dates(
         return
 
     days_off = parse_days_off(guild.days_off)
+    tz = ZoneInfo(guild.timezone)
     published = await Anecdote.list(db, guild_id=guild_id, state="PUBLISHED")
 
     for anecdote in published:
@@ -136,7 +142,7 @@ async def refresh_published_reveal_dates(
             continue
         published_at = datetime.fromisoformat(anecdote.published_at)
         reveal_at = next_reveal_datetime(
-            published_at, guild.reveal_interval_days, guild.reveal_time, days_off
+            published_at, guild.reveal_interval_days, guild.reveal_time, days_off, tz
         )
         message = await channel.fetch_message(anecdote.anecdote_message_id)
         embed = build_anecdote_embed(anecdote, reveal_at)

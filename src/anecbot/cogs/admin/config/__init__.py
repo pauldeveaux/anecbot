@@ -15,8 +15,9 @@ from anecbot.cogs.admin.config.handlers import (
     reveal_interval,
     reveal_time,
     show,
+    timezone as timezone_handler,
 )
-from anecbot.models.enums import LeaderboardResetMode
+from anecbot.models.enums import GuildTimezone, LeaderboardResetMode
 
 
 class ConfigCog(AdminCog):
@@ -134,6 +135,23 @@ class ConfigCog(AdminCog):
     async def config_daily_limit(self, interaction: discord.Interaction, n: int):
         """Set the daily submission limit per person."""
         await daily_limit.handle(interaction, n)
+
+    @config.command(
+        name="timezone",
+        description="Définir le fuseau horaire du serveur",
+    )
+    @app_commands.describe(fuseau="Fuseau horaire du serveur")
+    @app_commands.choices(
+        fuseau=[
+            app_commands.Choice(name=label, value=tz.value)
+            for tz, label in timezone_handler.MODE_LABELS.items()
+        ]
+    )
+    async def config_timezone(
+        self, interaction: discord.Interaction, fuseau: GuildTimezone
+    ):
+        """Set the guild's timezone."""
+        await timezone_handler.handle(interaction, fuseau)
 
     @config.command(
         name="show",

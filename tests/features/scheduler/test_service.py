@@ -1,6 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 from typing import cast
+from zoneinfo import ZoneInfo
 
 import aiosqlite
 import discord
@@ -25,6 +26,7 @@ AUTHOR_ID = 1
 TARGET_ID = 2
 
 WEEKEND = {5, 6}  # Saturday, Sunday
+PARIS = ZoneInfo("Europe/Paris")
 
 
 class _FakeMessage:
@@ -152,6 +154,20 @@ def test_is_publication_due_catch_up_after_long_offline():
     last = datetime(2026, 7, 1, 15, 0)  # Two weeks ago
     now = datetime(2026, 7, 14, 10, 0)
     assert is_publication_due(last, 1, "15:00", set(), now) is True
+
+
+def test_is_publication_due_respects_timezone_across_midnight():
+    """A last_published moment landing on a different local calendar day changes the due date."""
+    last = datetime(2026, 7, 13, 23, 0)  # 23:00 UTC Monday = 01:00 CEST Tuesday
+    # local last_published date is Tuesday 07-14 -> next active day (+1) = Wednesday 07-15
+    # 15:00 Paris (CEST) = 13:00 UTC
+    just_before = datetime(2026, 7, 15, 12, 55)
+    just_after = datetime(2026, 7, 15, 13, 5)
+
+    assert is_publication_due(last, 1, "15:00", set(), just_before, PARIS) is False
+    assert is_publication_due(last, 1, "15:00", set(), just_after, PARIS) is True
+    # a plain UTC interpretation would already have been due a full day earlier
+    assert is_publication_due(last, 1, "15:00", set(), just_before) is True
 
 
 # --- check_publication_for_guild ---

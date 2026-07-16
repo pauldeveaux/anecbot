@@ -33,3 +33,24 @@ class VoteResult(StrEnum):
     RECORDED = "recorded"
     CLOSED = "closed"
     IS_AUTHOR = "is_author"
+
+
+class GuildTimezone(StrEnum):
+    """Predefined timezone choices for /config timezone (Discord caps choices at 25)."""
+
+    EUROPE_PARIS = "Europe/Paris"
+    EUROPE_BRUSSELS = "Europe/Brussels"
+    EUROPE_ZURICH = "Europe/Zurich"
+    EUROPE_LUXEMBOURG = "Europe/Luxembourg"
+    EUROPE_LONDON = "Europe/London"
+    AMERICA_TORONTO = "America/Toronto"
+    AMERICA_MARTINIQUE = "America/Martinique"
+    AMERICA_GUADELOUPE = "America/Guadeloupe"
+    AMERICA_NEW_YORK = "America/New_York"
+    INDIAN_REUNION = "Indian/Reunion"
+    INDIAN_MAYOTTE = "Indian/Mayotte"
+    PACIFIC_NOUMEA = "Pacific/Noumea"
+    PACIFIC_TAHITI = "Pacific/Tahiti"
+    AFRICA_ABIDJAN = "Africa/Abidjan"
+    AFRICA_KINSHASA = "Africa/Kinshasa"
+    UTC = "UTC"
