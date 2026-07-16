@@ -20,14 +20,14 @@ def utcnow() -> datetime:
 
 def discord_timestamp_full_relative(dt: datetime) -> str:
     """Format a datetime as Discord full + relative timestamps on two lines."""
-    unix = int(dt.timestamp())
+    unix = int(dt.replace(tzinfo=timezone.utc).timestamp())
     return f"<t:{unix}:{DISCORD_FULL}>\n<t:{unix}:{DISCORD_RELATIVE}>"
 
 
 def discord_timestamp(iso: str, style: str = DISCORD_FULL) -> str:
     """Format an ISO datetime as a Discord timestamp tag (localized per user)."""
     dt = datetime.fromisoformat(iso)
-    return f"<t:{int(dt.timestamp())}:{style}>"
+    return f"<t:{int(dt.replace(tzinfo=timezone.utc).timestamp())}:{style}>"
 
 
 def parse_days_off(days_off_str: str) -> set[int]:
