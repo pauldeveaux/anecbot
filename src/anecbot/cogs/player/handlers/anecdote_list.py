@@ -7,12 +7,13 @@ from anecbot.features.anecdote.service import (
     update_content,
 )
 from anecbot.features.player.service import get_member_guilds
+from anecbot.features.selector.service import compute_selection_probabilities
 from anecbot.models.anecdote import Anecdote
 from anecbot.models.player import Player
 from anecbot.shared.views.guild_select import GuildSelectView
 from anecbot.shared.views.paginator import NavigablePagesView
 from anecbot.utils.text import with_blank_lines
-from anecbot.utils.time import discord_timestamp
+from anecbot.utils.time import discord_timestamp, utcnow
 
 
 class EditModal(discord.ui.Modal, title="Modifier ton anecdote"):
@@ -85,10 +86,14 @@ class AnecdoteBrowserView(NavigablePagesView):
     """Browse PENDING anecdotes one at a time, with Edit/Delete actions on the current one."""
 
     def __init__(
-        self, anecdotes: list[Anecdote], target_aliases: dict[int, str | None]
+        self,
+        anecdotes: list[Anecdote],
+        target_aliases: dict[int, str | None],
+        probabilities: dict[int, float],
     ):
         self.anecdotes = anecdotes
         self.target_aliases = target_aliases
+        self.probabilities = probabilities
         super().__init__(timeout=180)
 
     @property
@@ -119,7 +124,12 @@ class AnecdoteBrowserView(NavigablePagesView):
         embed.add_field(
             name="Créée le", value=discord_timestamp(anecdote.created_at), inline=False
         )
-        embed.add_field(name="Probabilité de sélection", value="XX%", inline=False)
+        probability = self.probabilities.get(anecdote.id, 0.0)
+        embed.add_field(
+            name="Probabilité de sélection",
+            value=f"~{probability * 100:.1f}% (estimation, peut varier)",
+            inline=False,
+        )
         embed.set_footer(
             text=f"Anecdote {self.page + 1}/{len(self.anecdotes)} — #{anecdote.id}"
         )
@@ -172,7 +182,11 @@ async def _show_browser(
         target = await Player.get(db, guild_id, anecdote.target_id)
         target_aliases[anecdote.id] = target.alias if target else None
 
-    view = AnecdoteBrowserView(anecdotes, target_aliases)
+    # Probabilities are computed over the guild's whole PENDING queue (the draw isn't
+    # restricted to this author's own anecdotes), then narrowed down to the ones shown here.
+    probabilities = await compute_selection_probabilities(db, guild_id, utcnow())
+
+    view = AnecdoteBrowserView(anecdotes, target_aliases, probabilities)
     if edit:
         await interaction.response.edit_message(embed=view.build_embed(), view=view)
     else:

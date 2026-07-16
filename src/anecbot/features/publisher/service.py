@@ -7,6 +7,7 @@ import discord
 
 from anecbot.features.player.service import get_active_targets
 from anecbot.features.publisher.views import McqView
+from anecbot.features.selector.service import select_pending_anecdote
 from anecbot.models.anecdote import Anecdote
 from anecbot.models.guild import Guild
 from anecbot.utils.text import ZERO_WIDTH_SPACE, with_blank_lines
@@ -16,16 +17,6 @@ from anecbot.utils.time import (
     parse_days_off,
     utcnow,
 )
-
-
-async def get_next_pending_anecdote(
-    db: aiosqlite.Connection, guild_id: int
-) -> Anecdote | None:
-    """Return the oldest PENDING anecdote for the guild (FIFO placeholder for ANEC-15)."""
-    anecdotes = await Anecdote.list(db, guild_id=guild_id, state="PENDING")
-    if not anecdotes:
-        return None
-    return min(anecdotes, key=lambda a: (a.created_at, a.id))
 
 
 def build_anecdote_embed(
@@ -48,8 +39,8 @@ def build_anecdote_embed(
 async def publish_next_anecdote(
     bot: discord.Client, db: aiosqlite.Connection, guild_id: int
 ) -> Anecdote | None:
-    """Publish the guild's next PENDING anecdote and transition it to RUNNING."""
-    anecdote = await get_next_pending_anecdote(db, guild_id)
+    """Publish a weighted-random PENDING anecdote for the guild and transition it to RUNNING."""
+    anecdote = await select_pending_anecdote(db, guild_id, utcnow())
     if anecdote is None:
         return None
 
