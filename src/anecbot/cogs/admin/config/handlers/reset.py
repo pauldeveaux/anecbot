@@ -16,7 +16,7 @@ class ConfigResetView(discord.ui.View):
     async def confirm(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
-        """Reset config to defaults."""
+        """Reset config to defaults and stop the game (a reset channel can't stay started)."""
         db = get_db(interaction)
         await Guild.upsert(
             db,
@@ -33,6 +33,7 @@ class ConfigResetView(discord.ui.View):
             leaderboard_reset_anchor=None,
             leaderboard_reset_time="00:00",
             daily_limit=0,
+            started=0,
         )
         await interaction.response.edit_message(
             content="✅ Configuration réinitialisée aux valeurs par défaut.",
@@ -51,9 +52,12 @@ class ConfigResetView(discord.ui.View):
 async def handle(interaction: discord.Interaction):
     """Reset guild configuration with confirmation."""
     assert interaction.guild_id is not None
+    db = get_db(interaction)
+    guild = await Guild.get(db, interaction.guild_id)
+
+    message = "⚠️ Réinitialiser toute la configuration aux valeurs par défaut ?"
+    if guild is not None and guild.started:
+        message += "\n⚠️ Le jeu est actuellement en cours : il sera aussi mis en pause."
+
     view = ConfigResetView(interaction.guild_id)
-    await interaction.response.send_message(
-        "⚠️ Réinitialiser toute la configuration aux valeurs par défaut ?",
-        view=view,
-        ephemeral=True,
-    )
+    await interaction.response.send_message(message, view=view, ephemeral=True)
