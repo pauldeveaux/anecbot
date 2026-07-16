@@ -1,9 +1,13 @@
+import logging
+
 import discord
 
 from anecbot.cogs.admin.base import get_db
 from anecbot.features.publisher.service import refresh_published_reveal_dates
 from anecbot.models.enums import GuildTimezone
 from anecbot.models.guild import Guild
+
+logger = logging.getLogger(__name__)
 
 MODE_LABELS: dict[GuildTimezone, str] = {
     GuildTimezone.EUROPE_PARIS: "France / Belgique (Europe/Paris)",
@@ -30,6 +34,7 @@ async def handle(interaction: discord.Interaction, tz: GuildTimezone):
     assert interaction.guild_id is not None
     db = get_db(interaction)
     await Guild.upsert(db, interaction.guild_id, timezone=tz)
+    logger.info("Timezone set to %s for guild %s", tz, interaction.guild_id)
     await refresh_published_reveal_dates(interaction.client, db, interaction.guild_id)
     await interaction.response.send_message(
         f"✅ Fuseau horaire configuré : {MODE_LABELS[tz]}",

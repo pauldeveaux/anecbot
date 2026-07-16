@@ -36,6 +36,7 @@ async def handle_ban(
     else:
         label = "en tant que cible"
 
+    logger.info("User %s banned (%s) in guild %s", user.id, label, interaction.guild_id)
     await interaction.response.send_message(
         f"✅ {user.mention} a été banni(e) {label}.",
         ephemeral=True,
@@ -78,6 +79,9 @@ async def handle_unban(
     else:
         label = "en tant que cible"
 
+    logger.info(
+        "User %s unbanned (%s) in guild %s", user.id, label, interaction.guild_id
+    )
     await interaction.response.send_message(
         f"✅ {user.mention} a été débanni(e) {label}.",
         ephemeral=True,

@@ -31,6 +31,7 @@ async def handle_suspend(
         return
 
     await Player.update(db, interaction.guild_id, user.id, suspended=1)
+    logger.info("User %s suspended in guild %s", user.id, interaction.guild_id)
     await interaction.response.send_message(
         f"✅ {user.mention} a été suspendu(e).",
         ephemeral=True,
@@ -69,6 +70,7 @@ async def handle_unsuspend(
         return
 
     await Player.update(db, interaction.guild_id, user.id, suspended=0)
+    logger.info("User %s unsuspended in guild %s", user.id, interaction.guild_id)
     await interaction.response.send_message(
         f"✅ {user.mention} n'est plus suspendu(e).",
         ephemeral=True,

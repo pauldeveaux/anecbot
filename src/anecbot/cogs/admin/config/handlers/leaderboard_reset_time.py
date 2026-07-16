@@ -1,9 +1,12 @@
+import logging
 import re
 
 import discord
 
 from anecbot.cogs.admin.base import get_db
 from anecbot.models.guild import Guild
+
+logger = logging.getLogger(__name__)
 
 TIME_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
@@ -18,6 +21,9 @@ async def handle(interaction: discord.Interaction, heure: str):
         return
     await Guild.upsert(
         get_db(interaction), interaction.guild_id, leaderboard_reset_time=heure
+    )
+    logger.info(
+        "Leaderboard reset time set to %s for guild %s", heure, interaction.guild_id
     )
     await interaction.response.send_message(
         f"✅ Heure de reset du leaderboard configurée : {heure}",

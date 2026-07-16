@@ -1,3 +1,5 @@
+import logging
+
 import discord
 
 from anecbot.cogs.admin.base import get_db
@@ -6,6 +8,8 @@ from anecbot.features.player.service import can_register_as_target
 from anecbot.models.enums import PlayerRole
 from anecbot.models.guild import Guild
 from anecbot.models.player import Player
+
+logger = logging.getLogger(__name__)
 
 ROLE_LABELS = {
     PlayerRole.SUBMITTER: "rédacteur",
@@ -66,6 +70,9 @@ async def handle(
     else:
         label = ROLE_LABELS[PlayerRole(role)]
 
+    logger.info(
+        "User %s registered as %s in guild %s", user.id, label, interaction.guild_id
+    )
     await interaction.response.send_message(
         f"✅ {user.mention} inscrit(e) comme {label}.",
         ephemeral=True,

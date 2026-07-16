@@ -1,3 +1,5 @@
+import logging
+
 import discord
 
 from anecbot.cogs.admin.base import get_db
@@ -12,6 +14,8 @@ from anecbot.cogs.admin.players.handlers.registration import (
 from anecbot.features.player.service import can_register_as_target
 from anecbot.models.guild import Guild
 from anecbot.models.player import Player
+
+logger = logging.getLogger(__name__)
 
 CUSTOM_ID_PREFIX = "register_targets"
 
@@ -66,6 +70,11 @@ class RegisterTargetsView(discord.ui.View):
         await Guild.upsert(db, interaction.guild_id)
         await Player.upsert(
             db, interaction.guild_id, interaction.user.id, can_be_target=1
+        )
+        logger.info(
+            "User %s self-registered as target in guild %s",
+            interaction.user.id,
+            interaction.guild_id,
         )
         await interaction.response.send_message(
             "✅ Inscription réussie ! Tu es maintenant une cible.",

@@ -1,3 +1,4 @@
+import logging
 import re
 
 import discord
@@ -5,6 +6,8 @@ import discord
 from anecbot.cogs.admin.base import get_db
 from anecbot.features.publisher.service import refresh_published_reveal_dates
 from anecbot.models.guild import Guild
+
+logger = logging.getLogger(__name__)
 
 TIME_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
@@ -20,6 +23,7 @@ async def handle(interaction: discord.Interaction, heure: str):
         return
     db = get_db(interaction)
     await Guild.upsert(db, interaction.guild_id, reveal_time=heure)
+    logger.info("Reveal time set to %s for guild %s", heure, interaction.guild_id)
     await refresh_published_reveal_dates(interaction.client, db, interaction.guild_id)
     await interaction.response.send_message(
         f"✅ Heure de révélation configurée : {heure}",

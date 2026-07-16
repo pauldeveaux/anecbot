@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 
 import discord
@@ -5,6 +6,8 @@ import discord
 from anecbot.cogs.admin.base import get_db
 from anecbot.cogs.admin.config.handlers.show import build_config_embed
 from anecbot.models.guild import Guild
+
+logger = logging.getLogger(__name__)
 
 
 class StartConfirmView(discord.ui.View):
@@ -25,6 +28,7 @@ class StartConfirmView(discord.ui.View):
         if guild is None or guild.started_at is None:
             kwargs["started_at"] = datetime.now(timezone.utc).isoformat()
         await Guild.upsert(db, self.guild_id, **kwargs)
+        logger.info("Game started for guild %s", self.guild_id)
         await interaction.response.edit_message(
             content="✅ Jeu démarré ! Les publications commenceront selon la configuration.",
             view=None,

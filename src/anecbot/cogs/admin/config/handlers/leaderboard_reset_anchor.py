@@ -1,3 +1,5 @@
+import logging
+
 import discord
 
 from anecbot.cogs.admin.base import get_db
@@ -6,6 +8,8 @@ from anecbot.cogs.admin.config.leaderboard_reset_format import (
 )
 from anecbot.models.enums import LeaderboardResetMode
 from anecbot.models.guild import Guild
+
+logger = logging.getLogger(__name__)
 
 ANCHOR_RANGES: dict[LeaderboardResetMode, tuple[int, int]] = {
     LeaderboardResetMode.WEEKLY: (0, 6),
@@ -42,6 +46,9 @@ async def handle(interaction: discord.Interaction, n: int):
         return
 
     await Guild.upsert(db, interaction.guild_id, leaderboard_reset_anchor=n)
+    logger.info(
+        "Leaderboard reset anchor set to %s for guild %s", n, interaction.guild_id
+    )
     label = format_leaderboard_reset_anchor(guild.leaderboard_reset_mode, n)
     await interaction.response.send_message(
         f"✅ Jour de reset du leaderboard configuré : {label}",

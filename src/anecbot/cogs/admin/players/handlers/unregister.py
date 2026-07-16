@@ -44,6 +44,7 @@ async def handle(
             msg = f"✅ Rôles retirés pour {user.mention} (le ban reste actif)."
         else:
             msg = f"✅ {user.mention} a été désinscrit(e)."
+        logger.info("User %s unregistered in guild %s", user.id, interaction.guild_id)
         await interaction.response.send_message(msg, ephemeral=True)
         await _notify_user(user, guild_name, "désinscrit(e)")
         return
@@ -67,6 +68,12 @@ async def handle(
         if not await player_has_anecdotes(db, interaction.guild_id, user.id):
             await Player.delete(db, interaction.guild_id, user.id)
 
+    logger.info(
+        "User %s unregistered from role %s in guild %s",
+        user.id,
+        label,
+        interaction.guild_id,
+    )
     await interaction.response.send_message(
         f"✅ {user.mention} n'est plus {label}.",
         ephemeral=True,

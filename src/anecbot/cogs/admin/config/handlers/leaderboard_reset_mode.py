@@ -1,3 +1,5 @@
+import logging
+
 import discord
 
 from anecbot.cogs.admin.base import get_db
@@ -7,6 +9,8 @@ from anecbot.cogs.admin.config.leaderboard_reset_format import (
 )
 from anecbot.models.enums import LeaderboardResetMode
 from anecbot.models.guild import Guild
+
+logger = logging.getLogger(__name__)
 
 MODE_LABELS: dict[LeaderboardResetMode, str] = {
     LeaderboardResetMode.NEVER: "jamais",
@@ -27,6 +31,9 @@ async def handle(interaction: discord.Interaction, mode: LeaderboardResetMode):
     if mode == LeaderboardResetMode.NEVER:
         kwargs["leaderboard_reset_interval"] = 1
     await Guild.upsert(get_db(interaction), interaction.guild_id, **kwargs)
+    logger.info(
+        "Leaderboard reset mode set to %s for guild %s", mode, interaction.guild_id
+    )
     message = f"✅ Fréquence de reset du leaderboard configurée : {MODE_LABELS[mode]}."
     if mode not in (LeaderboardResetMode.NEVER, LeaderboardResetMode.DAILY):
         anchor_label = format_leaderboard_reset_anchor(mode, anchor)

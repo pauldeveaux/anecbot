@@ -1,8 +1,12 @@
+import logging
+
 import discord
 
 from anecbot.cogs.admin.base import get_db
 from anecbot.models.enums import GuildTimezone, LeaderboardResetMode
 from anecbot.models.guild import Guild
+
+logger = logging.getLogger(__name__)
 
 
 class ConfigResetView(discord.ui.View):
@@ -35,6 +39,7 @@ class ConfigResetView(discord.ui.View):
             daily_limit=0,
             started=0,
         )
+        logger.info("Config reset to defaults for guild %s", self.guild_id)
         await interaction.response.edit_message(
             content="✅ Configuration réinitialisée aux valeurs par défaut.",
             view=None,

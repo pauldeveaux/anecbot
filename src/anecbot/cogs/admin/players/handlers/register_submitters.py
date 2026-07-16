@@ -1,3 +1,5 @@
+import logging
+
 import discord
 
 from anecbot.cogs.admin.base import get_db
@@ -11,6 +13,8 @@ from anecbot.cogs.admin.players.handlers.registration import (
 )
 from anecbot.models.guild import Guild
 from anecbot.models.player import Player
+
+logger = logging.getLogger(__name__)
 
 CUSTOM_ID_PREFIX = "register_submitters"
 
@@ -54,6 +58,11 @@ class RegisterSubmittersView(discord.ui.View):
 
         await Guild.upsert(db, interaction.guild_id)
         await Player.upsert(db, interaction.guild_id, interaction.user.id, can_submit=1)
+        logger.info(
+            "User %s self-registered as submitter in guild %s",
+            interaction.user.id,
+            interaction.guild_id,
+        )
         await interaction.response.send_message(
             "✅ Inscription réussie ! Tu peux maintenant soumettre des anecdotes en DM.",
             ephemeral=True,
