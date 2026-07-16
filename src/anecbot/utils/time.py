@@ -69,28 +69,28 @@ def next_publication_datetime(
     now: datetime,
 ) -> datetime:
     """Return the next datetime when a publication should happen."""
-    pub_time = parse_time(publish_time)
+    target_time = parse_time(publish_time)
 
     if last_published is None:
         today = now.date()
-        if today.weekday() not in days_off and now.time() < pub_time:
-            return datetime.combine(today, pub_time)
+        if today.weekday() not in days_off and now.time() < target_time:
+            return datetime.combine(today, target_time)
         target = next_active_day(
             today, 0 if today.weekday() in days_off else 1, days_off
         )
-        return datetime.combine(target, pub_time)
+        return datetime.combine(target, target_time)
 
     target_date = next_active_day(last_published.date(), interval_days, days_off)
-    target_dt = datetime.combine(target_date, pub_time)
+    target_dt = datetime.combine(target_date, target_time)
 
     if target_dt <= now:
         today = now.date()
-        if today.weekday() not in days_off and now.time() < pub_time:
-            return datetime.combine(today, pub_time)
+        if today.weekday() not in days_off and now.time() < target_time:
+            return datetime.combine(today, target_time)
         target_date = next_active_day(
             today, 0 if today.weekday() in days_off else 1, days_off
         )
-        return datetime.combine(target_date, pub_time)
+        return datetime.combine(target_date, target_time)
 
     return target_dt
 

@@ -5,7 +5,7 @@ import pytest
 import pytest_asyncio
 
 from anecbot.models.database import run_migrations
-from anecbot.models.enums import LeaderboardResetMode, RevealMode
+from anecbot.models.enums import LeaderboardResetMode
 from anecbot.models.guild import Guild
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations"
@@ -38,7 +38,6 @@ async def test_upsert_creates_with_defaults(db):
     assert result.interval_days == 1
     assert result.publish_time == "15:00"
     assert result.days_off == ""
-    assert result.reveal_mode == RevealMode.AFTER_PUBLISH
     assert result.reveal_interval_days == 1
     assert result.reveal_time == "13:30"
     assert result.leaderboard_reset_mode == LeaderboardResetMode.NEVER
@@ -76,17 +75,6 @@ async def test_get_after_upsert(db):
     assert result.guild_id == 123
     assert result.channel_id == 789
     assert result.publish_time == "10:00"
-
-
-@pytest.mark.asyncio
-async def test_upsert_updates_reveal_mode(db):
-    """Guild.upsert updates and persists reveal_mode."""
-    await Guild.upsert(db, 123)
-    result = await Guild.upsert(db, 123, reveal_mode=RevealMode.INTERVAL)
-    assert result.reveal_mode == RevealMode.INTERVAL
-    fetched = await Guild.get(db, 123)
-    assert fetched is not None
-    assert fetched.reveal_mode == RevealMode.INTERVAL
 
 
 @pytest.mark.asyncio

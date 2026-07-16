@@ -27,9 +27,7 @@ def build_next_embed(events: NextEvents) -> discord.Embed:
         inline=True,
     )
 
-    if events.reveal_placeholder:
-        reveal_value = "À venir"
-    elif events.next_reveal:
+    if events.next_reveal:
         reveal_value = ts(events.next_reveal)
     else:
         reveal_value = "Aucune révélation en attente"

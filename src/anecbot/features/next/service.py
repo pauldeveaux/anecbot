@@ -5,7 +5,7 @@ import aiosqlite
 
 from anecbot.features.next.repository import earliest_pending_reveal, last_published_at
 from anecbot.models.anecdote import Anecdote
-from anecbot.models.enums import LeaderboardResetMode, RevealMode
+from anecbot.models.enums import LeaderboardResetMode
 from anecbot.models.guild import Guild
 from anecbot.utils.time import (
     next_publication_datetime,
@@ -20,7 +20,6 @@ class NextEvents:
 
     next_publication: datetime | None
     next_reveal: datetime | None
-    reveal_placeholder: bool
     next_leaderboard_reset: datetime | None
     leaderboard_reset_placeholder: bool
     leaderboard_reset_hidden: bool
@@ -37,7 +36,6 @@ async def get_next_events(
         return NextEvents(
             next_publication=None,
             next_reveal=None,
-            reveal_placeholder=False,
             next_leaderboard_reset=None,
             leaderboard_reset_placeholder=False,
             leaderboard_reset_hidden=True,
@@ -54,16 +52,12 @@ async def get_next_events(
     )
 
     next_rev: datetime | None = None
-    reveal_placeholder = False
-    if guild.reveal_mode == RevealMode.AFTER_PUBLISH:
-        earliest_str = await earliest_pending_reveal(db, guild_id)
-        if earliest_str:
-            earliest = datetime.fromisoformat(earliest_str)
-            next_rev = next_reveal_datetime(
-                earliest, guild.reveal_interval_days, guild.reveal_time, days_off
-            )
-    else:
-        reveal_placeholder = True
+    earliest_str = await earliest_pending_reveal(db, guild_id)
+    if earliest_str:
+        earliest = datetime.fromisoformat(earliest_str)
+        next_rev = next_reveal_datetime(
+            earliest, guild.reveal_interval_days, guild.reveal_time, days_off
+        )
 
     leaderboard_reset_hidden = (
         guild.leaderboard_reset_mode == LeaderboardResetMode.NEVER
@@ -73,7 +67,6 @@ async def get_next_events(
     return NextEvents(
         next_publication=next_pub,
         next_reveal=next_rev,
-        reveal_placeholder=reveal_placeholder,
         next_leaderboard_reset=None,
         leaderboard_reset_placeholder=leaderboard_reset_placeholder,
         leaderboard_reset_hidden=leaderboard_reset_hidden,

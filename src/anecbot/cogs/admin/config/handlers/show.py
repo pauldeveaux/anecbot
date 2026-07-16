@@ -8,9 +8,6 @@ from anecbot.cogs.admin.config.leaderboard_reset_format import (
 from anecbot.cogs.admin.config.handlers.leaderboard_reset_mode import (
     MODE_LABELS as LEADERBOARD_RESET_MODE_LABELS,
 )
-from anecbot.cogs.admin.config.handlers.reveal_mode import (
-    MODE_LABELS as REVEAL_MODE_LABELS,
-)
 from anecbot.models.enums import LeaderboardResetMode
 from anecbot.models.guild import Guild
 
@@ -41,11 +38,6 @@ def build_config_embed(
     )
     embed.add_field(name="Heure de publication", value=guild.publish_time, inline=True)
     embed.add_field(name="Jours off", value=days_off, inline=True)
-    embed.add_field(
-        name="Mode de révélation",
-        value=REVEAL_MODE_LABELS[guild.reveal_mode],
-        inline=True,
-    )
     embed.add_field(
         name="Délai de révélation",
         value=f"{guild.reveal_interval_days} jour(s)",
