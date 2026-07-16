@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 import aiosqlite
 
 from anecbot.features.next.repository import earliest_pending_reveal, last_published_at
+from anecbot.features.scheduler.service import is_publication_due
 from anecbot.models.anecdote import Anecdote
 from anecbot.models.enums import LeaderboardResetMode
 from anecbot.models.guild import Guild
@@ -25,6 +26,7 @@ class NextEvents:
     next_leaderboard_reset: datetime | None
     leaderboard_reset_hidden: bool
     pending_anecdotes: int
+    publication_overdue: bool
 
 
 async def get_next_events(
@@ -40,6 +42,7 @@ async def get_next_events(
             next_leaderboard_reset=None,
             leaderboard_reset_hidden=True,
             pending_anecdotes=0,
+            publication_overdue=False,
         )
 
     pending_count = await Anecdote.count(db, guild_id=guild_id, state="PENDING")
@@ -49,6 +52,9 @@ async def get_next_events(
     last_pub_str = await last_published_at(db, guild_id)
     last_pub = datetime.fromisoformat(last_pub_str) if last_pub_str else None
     next_pub = next_publication_datetime(
+        last_pub, guild.interval_days, guild.publish_time, days_off, now, tz
+    )
+    publication_overdue = pending_count == 0 and is_publication_due(
         last_pub, guild.interval_days, guild.publish_time, days_off, now, tz
     )
 
@@ -86,4 +92,5 @@ async def get_next_events(
         next_leaderboard_reset=next_reset,
         leaderboard_reset_hidden=leaderboard_reset_hidden,
         pending_anecdotes=pending_count,
+        publication_overdue=publication_overdue,
     )

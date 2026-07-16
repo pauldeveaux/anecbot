@@ -5,6 +5,7 @@ import aiosqlite
 import pytest
 import pytest_asyncio
 
+from anecbot.models.anecdote import Anecdote
 from anecbot.models.database import run_migrations
 from anecbot.models.enums import GuildTimezone, LeaderboardResetMode
 from anecbot.models.guild import Guild
@@ -207,6 +208,62 @@ async def test_revealed_anecdotes_count_for_last_published(db):
     now = datetime(2026, 7, 14, 16, 0)
     events = await get_next_events(db, GUILD_ID, now)
     assert events.next_publication == datetime(2026, 7, 15, 15, 0)
+
+
+@pytest.mark.asyncio
+async def test_publication_overdue_when_queue_empty_and_past_publish_time(db):
+    """publication_overdue is True once today's publish_time has passed with no pending anecdotes."""
+    await Guild.upsert(
+        db,
+        GUILD_ID,
+        channel_id=1,
+        started=1,
+        publish_time="15:00",
+        interval_days=1,
+        days_off="",
+        timezone=GuildTimezone.UTC,
+    )
+    await _add_player(db, GUILD_ID, 1)
+    await _add_player(db, GUILD_ID, 2)
+    await _add_published_anecdote(
+        db, GUILD_ID, 1, 2, "2026-07-01T15:00:00", "PUBLISHED"
+    )
+
+    before_time = datetime(2026, 7, 14, 10, 0)
+    after_time = datetime(2026, 7, 14, 16, 0)
+
+    events_before = await get_next_events(db, GUILD_ID, before_time)
+    events_after = await get_next_events(db, GUILD_ID, after_time)
+
+    assert events_before.publication_overdue is False
+    assert events_after.publication_overdue is True
+
+
+@pytest.mark.asyncio
+async def test_publication_not_overdue_when_anecdotes_pending(db):
+    """publication_overdue stays False when a pending anecdote exists, even past publish_time."""
+    await Guild.upsert(
+        db,
+        GUILD_ID,
+        channel_id=1,
+        started=1,
+        publish_time="15:00",
+        interval_days=1,
+        days_off="",
+        timezone=GuildTimezone.UTC,
+    )
+    await _add_player(db, GUILD_ID, 1)
+    await _add_player(db, GUILD_ID, 2)
+    await _add_published_anecdote(
+        db, GUILD_ID, 1, 2, "2026-07-01T15:00:00", "PUBLISHED"
+    )
+    await Anecdote.create(
+        db, guild_id=GUILD_ID, author_id=1, target_id=2, content="pending"
+    )
+
+    now = datetime(2026, 7, 14, 16, 0)
+    events = await get_next_events(db, GUILD_ID, now)
+    assert events.publication_overdue is False
 
 
 async def _add_player(db: aiosqlite.Connection, guild_id: int, user_id: int):

@@ -34,14 +34,13 @@ def is_publication_due(
 ) -> bool:
     """Return whether a publication is due now, given the last one (or None if never)."""
     local_now = to_local(now, tz)
-    local_last = to_local(last_published, tz) if last_published is not None else None
     target_time = parse_time(publish_time)
-    if local_last is None:
+    if last_published is None:
         today = local_now.date()
         return today.weekday() not in days_off and local_now.time() >= target_time
+    local_last = to_local(last_published, tz)
     target_date = next_active_day(local_last.date(), interval_days, days_off)
-    target_dt = datetime.combine(target_date, target_time)
-    return local_now >= target_dt
+    return local_now.date() >= target_date and local_now.time() >= target_time
 
 
 async def check_publication_for_guild(
