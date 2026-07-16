@@ -3,6 +3,8 @@ import discord
 
 from anecbot.models.player import Player
 
+MAX_TARGETS = 25  # Discord select menus cap out at 25 options
+
 
 async def get_active_targets(
     db: aiosqlite.Connection, guild_id: int, exclude_user_id: int | None = None
@@ -17,6 +19,14 @@ async def get_active_targets(
         and not p.banned_target
         and p.user_id != exclude_user_id
     ]
+
+
+async def can_register_as_target(
+    db: aiosqlite.Connection, guild_id: int, user_id: int
+) -> bool:
+    """Return whether user_id can be added as a target without exceeding the MCQ's cap."""
+    active = await get_active_targets(db, guild_id, exclude_user_id=user_id)
+    return len(active) < MAX_TARGETS
 
 
 def get_member_guilds(bot: discord.Client, user_id: int) -> list[tuple[int, str]]:
