@@ -4,9 +4,11 @@ from pathlib import Path
 import aiosqlite
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 
+from anecbot.features.scheduler.service import check_publications
 from anecbot.utils.config import Settings
+from anecbot.utils.time import utcnow
 from anecbot.models.database import close_db, init_db
 
 logger = logging.getLogger(__name__)
@@ -37,12 +39,29 @@ def create_bot(settings: Settings) -> Bot:
             "Logged in as %s (guilds: %d, commands synced)", bot.user, len(bot.guilds)
         )
 
+    @tasks.loop(minutes=1)
+    async def publication_loop() -> None:
+        """Check every started guild and trigger publication where due, logging each tick."""
+        now = utcnow()
+        logger.info("Publication batch tick at %s", now.isoformat())
+        try:
+            triggered = await check_publications(bot, bot.db, now)
+            logger.info("Publication batch: triggered %d guild(s)", triggered)
+        except Exception:
+            logger.exception("Publication batch failed")
+
+    @publication_loop.before_loop
+    async def before_publication_loop() -> None:
+        """Wait for the bot to be ready before the first tick."""
+        await bot.wait_until_ready()
+
     async def setup_hook() -> None:
-        """Initialize the database and load cogs before the bot starts receiving events."""
+        """Initialize the database, load cogs, and start background tasks."""
         bot.db = await init_db(settings.db_path, Path(settings.migrations_dir))
         logger.info("Database initialized")
         await bot.load_extension("anecbot.cogs")
         logger.info("Cogs loaded")
+        publication_loop.start()
 
     bot.setup_hook = setup_hook
 
@@ -82,7 +101,8 @@ def create_bot(settings: Settings) -> Bot:
     _original_close = bot.close
 
     async def close() -> None:
-        """Close the database connection before shutting down the bot."""
+        """Stop background tasks and close the database connection before shutting down."""
+        publication_loop.cancel()
         if hasattr(bot, "db"):
             await close_db(bot.db)
         await _original_close()
