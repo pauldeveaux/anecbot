@@ -1,8 +1,12 @@
+import logging
+
 import discord
 
 from anecbot.cogs.admin.base import get_db
 from anecbot.features.publisher.service import refresh_published_reveal_dates
 from anecbot.models.guild import Guild
+
+logger = logging.getLogger(__name__)
 
 
 async def handle(interaction: discord.Interaction, jours: int):
@@ -16,6 +20,9 @@ async def handle(interaction: discord.Interaction, jours: int):
         return
     db = get_db(interaction)
     await Guild.upsert(db, interaction.guild_id, reveal_interval_days=jours)
+    logger.info(
+        "Reveal interval set to %s day(s) for guild %s", jours, interaction.guild_id
+    )
     await refresh_published_reveal_dates(interaction.client, db, interaction.guild_id)
     await interaction.response.send_message(
         f"✅ Intervalle de révélation configuré : {jours} jour(s) actif(s)",

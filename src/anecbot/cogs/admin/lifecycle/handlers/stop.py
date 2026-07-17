@@ -1,7 +1,11 @@
+import logging
+
 import discord
 
 from anecbot.cogs.admin.base import get_db
 from anecbot.models.guild import Guild
+
+logger = logging.getLogger(__name__)
 
 
 class StopConfirmView(discord.ui.View):
@@ -18,6 +22,7 @@ class StopConfirmView(discord.ui.View):
         """Stop the game."""
         db = get_db(interaction)
         await Guild.upsert(db, self.guild_id, started=0)
+        logger.info("Game stopped for guild %s", self.guild_id)
         await interaction.response.edit_message(
             content="✅ Jeu mis en pause. Les publications sont arrêtées.",
             view=None,

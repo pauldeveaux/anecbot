@@ -1,7 +1,11 @@
+import logging
+
 import discord
 
 from anecbot.cogs.admin.base import get_db
 from anecbot.models.player import Player
+
+logger = logging.getLogger(__name__)
 
 
 async def handle(
@@ -20,6 +24,9 @@ async def handle(
         return
 
     await Player.update(db, interaction.guild_id, user.id, alias=name)
+    logger.info(
+        "Alias for %s set to '%s' in guild %s", user.id, name, interaction.guild_id
+    )
     await interaction.response.send_message(
         f"✅ Alias de {user.mention} défini : **{name}**",
         ephemeral=True,

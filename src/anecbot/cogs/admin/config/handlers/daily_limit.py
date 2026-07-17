@@ -1,7 +1,11 @@
+import logging
+
 import discord
 
 from anecbot.cogs.admin.base import get_db
 from anecbot.models.guild import Guild
+
+logger = logging.getLogger(__name__)
 
 
 async def handle(interaction: discord.Interaction, n: int):
@@ -14,6 +18,7 @@ async def handle(interaction: discord.Interaction, n: int):
         )
         return
     await Guild.upsert(get_db(interaction), interaction.guild_id, daily_limit=n)
+    logger.info("Daily limit set to %s for guild %s", n, interaction.guild_id)
     label = str(n) if n else "illimitée"
     await interaction.response.send_message(
         f"✅ Limite quotidienne configurée : {label}",

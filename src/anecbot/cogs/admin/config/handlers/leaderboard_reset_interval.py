@@ -1,3 +1,5 @@
+import logging
+
 import discord
 
 from anecbot.cogs.admin.base import get_db
@@ -5,6 +7,8 @@ from anecbot.cogs.admin.config.leaderboard_reset_format import (
     format_leaderboard_reset_interval,
 )
 from anecbot.models.guild import Guild
+
+logger = logging.getLogger(__name__)
 
 
 async def handle(interaction: discord.Interaction, n: int):
@@ -21,6 +25,9 @@ async def handle(interaction: discord.Interaction, n: int):
         guild_id=interaction.guild_id
     )
     await Guild.upsert(db, interaction.guild_id, leaderboard_reset_interval=n)
+    logger.info(
+        "Leaderboard reset interval set to %s for guild %s", n, interaction.guild_id
+    )
     label = format_leaderboard_reset_interval(guild.leaderboard_reset_mode, n)
     await interaction.response.send_message(
         f"✅ Reset du leaderboard configuré : {label}",

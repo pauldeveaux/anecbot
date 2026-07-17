@@ -1,8 +1,12 @@
+import logging
+
 import discord
 
 from anecbot.cogs.admin.base import get_db
 from anecbot.models.guild import Guild
 from anecbot.utils.time import parse_days_off
+
+logger = logging.getLogger(__name__)
 
 
 async def handle(interaction: discord.Interaction, jours: str):
@@ -34,6 +38,7 @@ async def handle(interaction: discord.Interaction, jours: str):
 
     normalized = ",".join(str(day) for day in sorted(days))
     await Guild.upsert(get_db(interaction), interaction.guild_id, days_off=normalized)
+    logger.info("Days off set to '%s' for guild %s", normalized, interaction.guild_id)
     label = normalized if normalized else "aucun"
     await interaction.response.send_message(
         f"✅ Jours sans publication configurés : {label}",

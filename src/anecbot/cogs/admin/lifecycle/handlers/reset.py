@@ -1,7 +1,11 @@
+import logging
+
 import discord
 
 from anecbot.cogs.admin.base import get_db
 from anecbot.models.guild import Guild
+
+logger = logging.getLogger(__name__)
 
 
 class ResetConfirmView(discord.ui.View):
@@ -28,6 +32,7 @@ class ResetConfirmView(discord.ui.View):
         await db.execute("DELETE FROM players WHERE guild_id = ?", (self.guild_id,))
         await Guild.upsert(db, self.guild_id, started=0, started_at=None)
         await db.commit()
+        logger.warning("All data wiped for guild %s", self.guild_id)
 
         await interaction.response.edit_message(
             content="✅ Toutes les données ont été supprimées. Tu peux reconfigurer le bot.",
