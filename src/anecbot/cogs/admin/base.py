@@ -14,6 +14,7 @@ class AdminCog(commands.Cog):
     """Base class for admin-only cogs with automatic permission checks."""
 
     def __init__(self, bot: Bot):
+        """Store the bot instance for use by subclass command handlers."""
         self.bot = bot
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:

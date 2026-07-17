@@ -5,7 +5,12 @@ from zoneinfo import ZoneInfo
 import aiosqlite
 import discord
 
-from anecbot.features.leaderboard.service import publish_leaderboard, reset_leaderboard
+from anecbot.features.leaderboard.service import (
+    claim_leaderboard_reset_cycle,
+    mark_leaderboard_reset_published,
+    publish_leaderboard,
+    reset_leaderboard,
+)
 from anecbot.features.next.repository import last_published_at
 from anecbot.features.publisher.service import (
     publish_and_open_voting,
@@ -164,9 +169,21 @@ def is_leaderboard_reset_due(
 async def check_leaderboard_reset_for_guild(
     bot: discord.Client, db: aiosqlite.Connection, guild: Guild, now: datetime
 ) -> bool:
-    """Publish final standings and reset the leaderboard for the guild if due."""
+    """Publish final standings and reset the leaderboard for the guild if due.
+
+    Split into two checkpoints (claimed -> published -> reset) so a crash mid-flight can resume
+    without silently re-triggering the due-check forever: once claimed, only the not-yet-completed
+    steps (publish, then reset) are retried.
+    """
     if not guild.started or guild.channel_id is None:
         return False
+
+    if guild.leaderboard_reset_in_progress:
+        if not guild.leaderboard_reset_published:
+            await publish_leaderboard(bot, db, guild.guild_id)
+            await mark_leaderboard_reset_published(db, guild.guild_id)
+        await reset_leaderboard(db, guild.guild_id, now)
+        return True
 
     last_reset = (
         datetime.fromisoformat(guild.last_leaderboard_reset_at)
@@ -186,7 +203,11 @@ async def check_leaderboard_reset_for_guild(
     ):
         return False
 
+    if not await claim_leaderboard_reset_cycle(db, guild.guild_id):
+        return False
+
     await publish_leaderboard(bot, db, guild.guild_id)
+    await mark_leaderboard_reset_published(db, guild.guild_id)
     await reset_leaderboard(db, guild.guild_id, now)
     return True
 

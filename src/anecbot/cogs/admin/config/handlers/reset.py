@@ -1,10 +1,12 @@
 import logging
+from typing import Any
 
 import discord
 
 from anecbot.cogs.admin.base import get_db
-from anecbot.models.enums import GuildTimezone, LeaderboardResetMode
+from anecbot.features.config.service import reset_guild_config
 from anecbot.models.guild import Guild
+from anecbot.shared.views.errors import notify_unexpected_error
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +15,7 @@ class ConfigResetView(discord.ui.View):
     """Confirmation buttons for config reset."""
 
     def __init__(self, guild_id: int):
+        """Store the target guild id for the confirm/cancel callbacks."""
         super().__init__(timeout=30)
         self.guild_id = guild_id
 
@@ -22,23 +25,7 @@ class ConfigResetView(discord.ui.View):
     ):
         """Reset config to defaults and stop the game (a reset channel can't stay started)."""
         db = get_db(interaction)
-        await Guild.upsert(
-            db,
-            self.guild_id,
-            channel_id=None,
-            interval_days=1,
-            publish_time="15:00",
-            days_off="",
-            reveal_interval_days=1,
-            reveal_time="13:30",
-            timezone=GuildTimezone.EUROPE_PARIS,
-            leaderboard_reset_mode=LeaderboardResetMode.NEVER,
-            leaderboard_reset_interval=1,
-            leaderboard_reset_anchor=None,
-            leaderboard_reset_time="00:00",
-            daily_limit=0,
-            started=0,
-        )
+        await reset_guild_config(db, self.guild_id)
         logger.info("Config reset to defaults for guild %s", self.guild_id)
         await interaction.response.edit_message(
             content="✅ Configuration réinitialisée aux valeurs par défaut.",
@@ -52,6 +39,16 @@ class ConfigResetView(discord.ui.View):
             content="❌ Réinitialisation annulée.",
             view=None,
         )
+
+    async def on_error(
+        self,
+        interaction: discord.Interaction,
+        error: Exception,
+        item: discord.ui.Item[Any],
+        /,
+    ) -> None:
+        """Log and notify the user on an unexpected error during config reset."""
+        await notify_unexpected_error(interaction, error, logger)
 
 
 async def handle(interaction: discord.Interaction):

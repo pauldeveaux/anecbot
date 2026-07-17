@@ -6,9 +6,10 @@ import aiosqlite
 
 from anecbot.features.selector.repository import (
     count_total_published,
-    get_author_publish_distances,
+    get_author_publish_distances_bulk,
 )
 from anecbot.models.anecdote import Anecdote
+from anecbot.models.enums import AnecdoteState
 
 AUTHOR_TAU_FRACTION = 0.1
 
@@ -32,12 +33,17 @@ async def _pending_weights(
     total_published = await count_total_published(db, guild_id)
     tau = max(1.0, total_published * AUTHOR_TAU_FRACTION)
 
+    author_ids = list({anecdote.author_id for anecdote in anecdotes})
+    distances_by_author = await get_author_publish_distances_bulk(
+        db, guild_id, author_ids
+    )
+
     weights: dict[int, float] = {}
     for anecdote in anecdotes:
         age_weight = compute_age_weight(
             datetime.fromisoformat(anecdote.created_at), now
         )
-        distances = await get_author_publish_distances(db, guild_id, anecdote.author_id)
+        distances = distances_by_author[anecdote.author_id]
         weights[anecdote.id] = age_weight * compute_author_weight(distances, tau)
     return weights
 
@@ -49,7 +55,7 @@ async def select_pending_anecdote(
     rng: random.Random | None = None,
 ) -> Anecdote | None:
     """Weighted-random pick among PENDING anecdotes, or None if the queue is empty."""
-    anecdotes = await Anecdote.list(db, guild_id=guild_id, state="PENDING")
+    anecdotes = await Anecdote.list(db, guild_id=guild_id, state=AnecdoteState.PENDING)
     if not anecdotes:
         return None
 
@@ -64,7 +70,7 @@ async def compute_selection_probabilities(
     db: aiosqlite.Connection, guild_id: int, now: datetime
 ) -> dict[int, float]:
     """Return each PENDING anecdote's normalized selection probability (weight / total weight)."""
-    anecdotes = await Anecdote.list(db, guild_id=guild_id, state="PENDING")
+    anecdotes = await Anecdote.list(db, guild_id=guild_id, state=AnecdoteState.PENDING)
     if not anecdotes:
         return {}
     weights_by_id = await _pending_weights(db, guild_id, anecdotes, now)

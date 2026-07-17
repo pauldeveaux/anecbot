@@ -1,9 +1,11 @@
 import logging
+from typing import Any
 
 import discord
 
 from anecbot.cogs.admin.base import get_db
-from anecbot.models.guild import Guild
+from anecbot.features.lifecycle.service import wipe_guild_data
+from anecbot.shared.views.errors import notify_unexpected_error
 
 logger = logging.getLogger(__name__)
 
@@ -12,6 +14,7 @@ class ResetConfirmView(discord.ui.View):
     """Confirmation buttons for guild data reset."""
 
     def __init__(self, guild_id: int):
+        """Store the target guild id for the confirm/cancel callbacks."""
         super().__init__(timeout=30)
         self.guild_id = guild_id
 
@@ -23,16 +26,7 @@ class ResetConfirmView(discord.ui.View):
     ):
         """Wipe all guild data."""
         db = get_db(interaction)
-        await db.execute(
-            "DELETE FROM votes WHERE anecdote_id IN (SELECT id FROM anecdotes WHERE guild_id = ?)",
-            (self.guild_id,),
-        )
-        await db.execute("DELETE FROM anecdotes WHERE guild_id = ?", (self.guild_id,))
-        await db.execute("DELETE FROM leaderboard WHERE guild_id = ?", (self.guild_id,))
-        await db.execute("DELETE FROM players WHERE guild_id = ?", (self.guild_id,))
-        await Guild.upsert(db, self.guild_id, started=0, started_at=None)
-        await db.commit()
-        logger.warning("All data wiped for guild %s", self.guild_id)
+        await wipe_guild_data(db, self.guild_id)
 
         await interaction.response.edit_message(
             content="✅ Toutes les données ont été supprimées. Tu peux reconfigurer le bot.",
@@ -46,6 +40,16 @@ class ResetConfirmView(discord.ui.View):
             content="❌ Suppression annulée.",
             view=None,
         )
+
+    async def on_error(
+        self,
+        interaction: discord.Interaction,
+        error: Exception,
+        item: discord.ui.Item[Any],
+        /,
+    ) -> None:
+        """Log and notify the user on an unexpected error during data reset."""
+        await notify_unexpected_error(interaction, error, logger)
 
 
 async def handle(interaction: discord.Interaction):

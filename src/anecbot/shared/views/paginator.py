@@ -10,6 +10,7 @@ class NavigablePagesView(discord.ui.View):
     """
 
     def __init__(self, timeout: float = 120):
+        """Start on the first page and sync the navigation buttons' disabled state."""
         super().__init__(timeout=timeout)
         self.page = 0
         self.sync_nav_buttons()
@@ -77,6 +78,7 @@ class PaginatedView(NavigablePagesView):
         color: discord.Color = discord.Color.blue(),
         per_page: int = ITEMS_PER_PAGE,
     ):
+        """Store the items to paginate and the display settings for each page."""
         self.items = items
         self.title = title
         self.color = color

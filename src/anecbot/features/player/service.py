@@ -1,6 +1,10 @@
 import aiosqlite
 import discord
 
+from anecbot.features.anecdote.service import (
+    discard_pending_anecdotes,
+    player_has_anecdotes,
+)
 from anecbot.models.player import Player
 
 MAX_TARGETS = 25  # Discord select menus cap out at 25 options
@@ -45,3 +49,20 @@ async def is_active_submitter(
         and not player.suspended
         and not player.banned_submit
     )
+
+
+async def cleanup_if_fully_removed(
+    db: aiosqlite.Connection, guild_id: int, user_id: int
+) -> None:
+    """Discard pending anecdotes and delete the player row if they hold no roles or bans."""
+    player = await Player.get(db, guild_id, user_id)
+    if (
+        player
+        and not player.can_submit
+        and not player.can_be_target
+        and not player.banned_submit
+        and not player.banned_target
+    ):
+        await discard_pending_anecdotes(db, guild_id, user_id)
+        if not await player_has_anecdotes(db, guild_id, user_id):
+            await Player.delete(db, guild_id, user_id)

@@ -9,10 +9,12 @@ import pytest_asyncio
 from anecbot.features.player.service import (
     MAX_TARGETS,
     can_register_as_target,
+    cleanup_if_fully_removed,
     get_active_targets,
     get_member_guilds,
     is_active_submitter,
 )
+from anecbot.models.anecdote import Anecdote
 from anecbot.models.database import run_migrations
 from anecbot.models.guild import Guild
 from anecbot.models.player import Player
@@ -172,3 +174,57 @@ async def test_is_active_submitter_false_when_suspended_or_banned(db):
 
     assert await is_active_submitter(db, GUILD_ID, 1) is False
     assert await is_active_submitter(db, OTHER_GUILD_ID, 1) is False
+
+
+@pytest.mark.asyncio
+async def test_cleanup_if_fully_removed_deletes_player_with_no_roles_or_bans(db):
+    """A player with no roles, no bans, and no anecdotes is deleted."""
+    await Guild.upsert(db, GUILD_ID)
+    await Player.upsert(db, GUILD_ID, 1, can_submit=0, can_be_target=0)
+
+    await cleanup_if_fully_removed(db, GUILD_ID, 1)
+
+    assert await Player.get(db, GUILD_ID, 1) is None
+
+
+@pytest.mark.asyncio
+async def test_cleanup_if_fully_removed_keeps_player_with_a_ban(db):
+    """A player with an active ban is kept even with no roles."""
+    await Guild.upsert(db, GUILD_ID)
+    await Player.upsert(db, GUILD_ID, 1, can_submit=0, can_be_target=0, banned_submit=1)
+
+    await cleanup_if_fully_removed(db, GUILD_ID, 1)
+
+    assert await Player.get(db, GUILD_ID, 1) is not None
+
+
+@pytest.mark.asyncio
+async def test_cleanup_if_fully_removed_keeps_player_with_a_role(db):
+    """A player who still holds a role is left untouched."""
+    await Guild.upsert(db, GUILD_ID)
+    await Player.upsert(db, GUILD_ID, 1, can_submit=1, can_be_target=0)
+
+    await cleanup_if_fully_removed(db, GUILD_ID, 1)
+
+    assert await Player.get(db, GUILD_ID, 1) is not None
+
+
+@pytest.mark.asyncio
+async def test_cleanup_if_fully_removed_discards_pending_but_keeps_row_with_history(db):
+    """Pending anecdotes are discarded, but the player row survives if they have history."""
+    await Guild.upsert(db, GUILD_ID)
+    await Player.upsert(db, GUILD_ID, 1, can_submit=0, can_be_target=0)
+    await Player.upsert(db, GUILD_ID, 2, can_be_target=1)
+    pending = await Anecdote.create(
+        db, guild_id=GUILD_ID, author_id=1, target_id=2, content="x"
+    )
+    published = await Anecdote.create(
+        db, guild_id=GUILD_ID, author_id=1, target_id=2, content="y"
+    )
+    await Anecdote.update(db, published.id, state="PUBLISHED")
+
+    await cleanup_if_fully_removed(db, GUILD_ID, 1)
+
+    assert await Anecdote.get(db, pending.id) is None
+    assert await Anecdote.get(db, published.id) is not None
+    assert await Player.get(db, GUILD_ID, 1) is not None

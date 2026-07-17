@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import ClassVar
 
 from anecbot.models.base import Model
+from anecbot.models.enums import AnecdoteState
 
 
 @dataclass
@@ -16,8 +17,9 @@ class Anecdote(Model):
     author_id: int = 0
     target_id: int = 0
     content: str = ""
-    state: str = "PENDING"
+    state: AnecdoteState = AnecdoteState.PENDING
     created_at: str = ""
     published_at: str | None = None
     anecdote_message_id: int | None = None
     reveal_message_id: int | None = None
+    points_awarded: int = 0

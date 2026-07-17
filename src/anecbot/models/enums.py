@@ -27,6 +27,16 @@ class LeaderboardResetMode(StrEnum):
     YEARLY = "yearly"
 
 
+class AnecdoteState(StrEnum):
+    """Lifecycle state of an anecdote in the idempotent batch (PENDING -> RUNNING -> PUBLISHED -> REVEALING -> REVEALED)."""
+
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    PUBLISHED = "PUBLISHED"
+    REVEALING = "REVEALING"
+    REVEALED = "REVEALED"
+
+
 class VoteResult(StrEnum):
     """Outcome of attempting to record a vote."""
 

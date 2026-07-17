@@ -12,6 +12,7 @@ class GeneralCog(commands.Cog):
     """Public commands available to all users."""
 
     def __init__(self, bot: commands.Bot):
+        """Store the bot instance for use by the command handlers."""
         self.bot = bot
 
     @app_commands.command(name="help", description="Afficher l'aide du bot")

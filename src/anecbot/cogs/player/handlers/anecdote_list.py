@@ -1,3 +1,6 @@
+import logging
+from typing import Any
+
 import discord
 
 from anecbot.features.anecdote.service import (
@@ -10,10 +13,13 @@ from anecbot.features.player.service import get_member_guilds
 from anecbot.features.selector.service import compute_selection_probabilities
 from anecbot.models.anecdote import Anecdote
 from anecbot.models.player import Player
+from anecbot.shared.views.errors import notify_unexpected_error
 from anecbot.shared.views.guild_select import GuildSelectView
 from anecbot.shared.views.paginator import NavigablePagesView
 from anecbot.utils.text import with_blank_lines
 from anecbot.utils.time import discord_timestamp, utcnow
+
+logger = logging.getLogger(__name__)
 
 
 class EditModal(discord.ui.Modal, title="Modifier ton anecdote"):
@@ -26,6 +32,7 @@ class EditModal(discord.ui.Modal, title="Modifier ton anecdote"):
     )
 
     def __init__(self, anecdote_id: int, current_content: str):
+        """Pre-fill the text input with the anecdote's current content."""
         super().__init__()
         self.anecdote_id = anecdote_id
         self.content.default = current_content
@@ -45,11 +52,18 @@ class EditModal(discord.ui.Modal, title="Modifier ton anecdote"):
         await update_content(db, self.anecdote_id, str(self.content))
         await interaction.response.send_message("✅ Anecdote modifiée.", ephemeral=True)
 
+    async def on_error(
+        self, interaction: discord.Interaction, error: Exception, /
+    ) -> None:
+        """Log and notify the user on an unexpected error during editing."""
+        await notify_unexpected_error(interaction, error, logger)
+
 
 class ConfirmDeleteView(discord.ui.View):
     """Confirm or cancel deleting a PENDING anecdote."""
 
     def __init__(self, anecdote_id: int):
+        """Store the anecdote id targeted by the confirm/cancel callbacks."""
         super().__init__(timeout=120)
         self.anecdote_id = anecdote_id
 
@@ -81,6 +95,16 @@ class ConfirmDeleteView(discord.ui.View):
             content="❌ Suppression annulée.", embed=None, view=None
         )
 
+    async def on_error(
+        self,
+        interaction: discord.Interaction,
+        error: Exception,
+        item: discord.ui.Item[Any],
+        /,
+    ) -> None:
+        """Log and notify the user on an unexpected error during deletion."""
+        await notify_unexpected_error(interaction, error, logger)
+
 
 class AnecdoteBrowserView(NavigablePagesView):
     """Browse PENDING anecdotes one at a time, with Edit/Delete actions on the current one."""
@@ -91,6 +115,7 @@ class AnecdoteBrowserView(NavigablePagesView):
         target_aliases: dict[int, str | None],
         probabilities: dict[int, float],
     ):
+        """Store the anecdotes and their display data, one page per anecdote."""
         self.anecdotes = anecdotes
         self.target_aliases = target_aliases
         self.probabilities = probabilities
@@ -159,6 +184,16 @@ class AnecdoteBrowserView(NavigablePagesView):
         await interaction.response.edit_message(
             embed=embed, view=ConfirmDeleteView(anecdote.id)
         )
+
+    async def on_error(
+        self,
+        interaction: discord.Interaction,
+        error: Exception,
+        item: discord.ui.Item[Any],
+        /,
+    ) -> None:
+        """Log and notify the user on an unexpected error while browsing."""
+        await notify_unexpected_error(interaction, error, logger)
 
 
 async def _show_browser(

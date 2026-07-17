@@ -48,9 +48,19 @@ async def run_migrations(db: aiosqlite.Connection, migrations_dir: Path) -> None
 
         logger.info("Applying migration %s", migration_file.name)
         sql = migration_file.read_text()
-        await db.executescript(sql)
-        await db.execute("UPDATE schema_version SET version = ?", (migration_number,))
-        await db.commit()
+        statements = [s.strip() for s in sql.split(";") if s.strip()]
+        try:
+            await db.execute("BEGIN")
+            for statement in statements:
+                await db.execute(statement)
+            await db.execute(
+                "UPDATE schema_version SET version = ?", (migration_number,)
+            )
+        except BaseException:
+            await db.rollback()
+            raise
+        else:
+            await db.commit()
 
     final_version = await _get_version(db)
     logger.info("Database at version %d", final_version)

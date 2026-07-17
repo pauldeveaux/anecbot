@@ -29,3 +29,5 @@ class Guild(Model):
     queue_empty_warned: int = 0
     last_leaderboard_reset_at: str | None = None
     timezone: GuildTimezone = GuildTimezone.EUROPE_PARIS
+    leaderboard_reset_in_progress: int = 0
+    leaderboard_reset_published: int = 0

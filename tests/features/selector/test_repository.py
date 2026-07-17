@@ -7,6 +7,7 @@ import pytest_asyncio
 from anecbot.features.selector.repository import (
     count_total_published,
     get_author_publish_distances,
+    get_author_publish_distances_bulk,
 )
 from anecbot.models.anecdote import Anecdote
 from anecbot.models.database import run_migrations
@@ -158,3 +159,45 @@ async def test_get_author_publish_distances_is_per_guild(db, players):
     await _anecdote(db, OTHER_GUILD_ID, AUTHOR_ID, "PUBLISHED", "2026-01-02T00:00:00")
 
     assert await get_author_publish_distances(db, GUILD_ID, AUTHOR_ID) == [0]
+
+
+# --- get_author_publish_distances_bulk ---
+
+
+@pytest.mark.asyncio
+async def test_get_author_publish_distances_bulk_matches_single_author_calls(
+    db, players
+):
+    """The batched result for several authors matches calling the single-author version each."""
+    await _anecdote(db, GUILD_ID, AUTHOR_ID, "PUBLISHED", "2026-01-01T00:00:00")
+    await _anecdote(db, GUILD_ID, OTHER_AUTHOR_ID, "PUBLISHED", "2026-01-02T00:00:00")
+    await _anecdote(db, GUILD_ID, OTHER_AUTHOR_ID, "PUBLISHED", "2026-01-03T00:00:00")
+
+    bulk = await get_author_publish_distances_bulk(
+        db, GUILD_ID, [AUTHOR_ID, OTHER_AUTHOR_ID]
+    )
+
+    assert bulk[AUTHOR_ID] == await get_author_publish_distances(
+        db, GUILD_ID, AUTHOR_ID
+    )
+    assert sorted(bulk[OTHER_AUTHOR_ID]) == sorted(
+        await get_author_publish_distances(db, GUILD_ID, OTHER_AUTHOR_ID)
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_author_publish_distances_bulk_includes_authors_with_no_publications(
+    db, players
+):
+    """An author with zero past publications still gets an empty list, not a missing key."""
+    bulk = await get_author_publish_distances_bulk(
+        db, GUILD_ID, [AUTHOR_ID, OTHER_AUTHOR_ID]
+    )
+
+    assert bulk == {AUTHOR_ID: [], OTHER_AUTHOR_ID: []}
+
+
+@pytest.mark.asyncio
+async def test_get_author_publish_distances_bulk_empty_author_list(db, players):
+    """An empty author id list returns an empty dict without querying."""
+    assert await get_author_publish_distances_bulk(db, GUILD_ID, []) == {}

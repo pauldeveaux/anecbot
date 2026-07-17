@@ -1,5 +1,7 @@
 import aiosqlite
 
+from anecbot.models.enums import AnecdoteState
+
 
 async def count_created_today(
     db: aiosqlite.Connection, guild_id: int, author_id: int
@@ -33,8 +35,8 @@ async def delete_pending_by_author(
 ) -> int:
     """Delete the author's own PENDING anecdotes in the guild, return the count deleted."""
     cursor = await db.execute(
-        "DELETE FROM anecdotes WHERE guild_id = ? AND author_id = ? AND state = 'PENDING'",
-        (guild_id, author_id),
+        "DELETE FROM anecdotes WHERE guild_id = ? AND author_id = ? AND state = ?",
+        (guild_id, author_id, AnecdoteState.PENDING),
     )
     await db.commit()
     return cursor.rowcount
