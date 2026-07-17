@@ -5,6 +5,7 @@ from discord.ext import commands
 from anecbot.cogs.general.handlers import help as help_handler
 from anecbot.cogs.general.handlers import leaderboard as leaderboard_handler
 from anecbot.cogs.general.handlers import next as next_handler
+from anecbot.cogs.general.handlers import rules as rules_handler
 from anecbot.cogs.general.handlers import stats as stats_handler
 
 
@@ -19,6 +20,11 @@ class GeneralCog(commands.Cog):
     async def help(self, interaction: discord.Interaction):
         """Show help guide."""
         await help_handler.handle(interaction)
+
+    @app_commands.command(name="rules", description="Afficher les règles du jeu")
+    async def rules(self, interaction: discord.Interaction):
+        """Show the game rules."""
+        await rules_handler.handle(interaction)
 
     @app_commands.command(name="stats", description="Afficher les statistiques du jeu")
     @app_commands.guild_only()
