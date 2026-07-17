@@ -1,11 +1,11 @@
 import logging
-from datetime import datetime, timezone
 from typing import Any
 
 import discord
 
 from anecbot.cogs.admin.base import get_db
 from anecbot.cogs.admin.config.handlers.show import build_config_embed
+from anecbot.features.lifecycle.service import start_game
 from anecbot.models.guild import Guild
 from anecbot.shared.views.errors import notify_unexpected_error
 
@@ -24,14 +24,9 @@ class StartConfirmView(discord.ui.View):
     async def confirm(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
-        """Start the game, recording the first start timestamp."""
+        """Start the game and announce it publicly."""
         db = get_db(interaction)
-        guild = await Guild.get(db, self.guild_id)
-        kwargs: dict[str, object] = {"started": 1}
-        if guild is None or guild.started_at is None:
-            kwargs["started_at"] = datetime.now(timezone.utc).isoformat()
-        await Guild.upsert(db, self.guild_id, **kwargs)
-        logger.info("Game started for guild %s", self.guild_id)
+        await start_game(interaction.client, db, self.guild_id)
         await interaction.response.edit_message(
             content="✅ Jeu démarré ! Les publications commenceront selon la configuration.",
             view=None,
