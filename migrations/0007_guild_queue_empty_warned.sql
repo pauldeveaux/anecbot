@@ -1,0 +1,1 @@
+ALTER TABLE guilds ADD COLUMN queue_empty_warned INTEGER NOT NULL DEFAULT 0;

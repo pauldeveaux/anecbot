@@ -22,10 +22,31 @@ cp .env.example .env
 uv run python -m anecbot
 ```
 
+## Configuration
+
+Set via environment variables (`.env`, see `.env.example`):
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `DISCORD_TOKEN` | — (required) | Discord bot token |
+| `DB_PATH` | `data/anecbot.db` | SQLite database file |
+| `MIGRATIONS_DIR` | `migrations` | Directory of versioned SQL migration files |
+| `LOG_LEVEL` | `INFO` | Log verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`, ...); invalid values fall back to `INFO` |
+| `LOG_FILE` | `data/anecbot.log` | Log file path |
+
+## Logs
+
+Logs are written both to the console (colored) and to `LOG_FILE` (plain text). The log file rotates
+automatically at 5 MB, keeping 3 backups (`anecbot.log`, `anecbot.log.1`, `anecbot.log.2`,
+`anecbot.log.3`).
+
+To see more detail (e.g. per-interaction logs), set `LOG_LEVEL=DEBUG` in `.env` and restart the bot.
+
 ## Tech stack
 
-- Python 3.12+
+- Python 3.14+
 - discord.py
 - SQLite via aiosqlite
 - uv (package manager)
 - ruff (linter + formatter)
+- pyright (type checker)
