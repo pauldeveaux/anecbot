@@ -1,8 +1,10 @@
 import discord
 
 RULES_DESCRIPTION = (
-    "L'objectif de ce bot est d'écrire des anecdotes sur les autres joueurs du serveur, ou sur "
-    "soi-même, puis de laisser tout le monde deviner à qui elles appartiennent.\n\n"
+    "Le principe : écrire des anecdotes sur les autres joueurs du serveur — ou sur toi-même ! — "
+    "et laisser tout le monde deviner à qui elles appartiennent.\n"
+    "*(Le but : deviner qui est visé par l'anecdote — pas forcément qui l'a écrite, même si ça "
+    "peut être la même personne.)*\n\n"
     "**Comment ça marche**\n"
     "- Il faut être inscrit pour participer (via les boutons d'inscription postés sur le "
     "serveur)\n"
