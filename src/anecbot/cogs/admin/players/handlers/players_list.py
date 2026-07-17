@@ -27,6 +27,19 @@ def _matches_filter(player: Player, filter_role: str | None) -> bool:
     return True
 
 
+def _role_tag(player: Player) -> str:
+    """Return a fixed-width S/T role indicator, blank-padded so the tag column stays aligned."""
+    if player.can_submit and player.can_be_target:
+        tag = "S/T"
+    elif player.can_submit:
+        tag = "S"
+    elif player.can_be_target:
+        tag = "T"
+    else:
+        tag = ""
+    return f"`{tag:<3}`"
+
+
 def _format_player(
     player: Player, guild: discord.Guild | None, filter_role: str | None
 ) -> str:
@@ -44,7 +57,7 @@ def _format_player(
             parts.append("cible")
         status += f" ({', '.join(parts)})"
 
-    return f"• **{name}**{status}"
+    return f"• {_role_tag(player)} **{name}**{status}"
 
 
 async def handle(
