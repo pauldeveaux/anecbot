@@ -9,7 +9,6 @@ from anecbot.cogs.admin.players.handlers.registration import (
     check_role,
     make_custom_id,
     parse_role_id,
-    send_dm,
 )
 from anecbot.features.player.service import MAX_TARGETS, can_register_as_target
 from anecbot.models.guild import Guild
@@ -80,9 +79,6 @@ class RegisterTargetsView(discord.ui.View):
             "✅ Inscription réussie ! Tu es maintenant une cible.",
             ephemeral=True,
         )
-
-        guild_name = interaction.guild.name if interaction.guild else "le serveur"
-        await send_dm(interaction.user, guild_name, "être la cible")
 
 
 async def handle(interaction: discord.Interaction, role: discord.Role | None = None):
