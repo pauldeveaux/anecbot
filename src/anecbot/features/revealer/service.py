@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from typing import cast
 from zoneinfo import ZoneInfo
@@ -13,6 +14,8 @@ from anecbot.models.vote import Vote
 from anecbot.utils.player import display_name
 from anecbot.utils.text import ZERO_WIDTH_SPACE, with_blank_lines
 from anecbot.utils.time import next_reveal_datetime, parse_days_off
+
+logger = logging.getLogger(__name__)
 
 MAX_VOTES_FIELD_LENGTH = 1000  # stay under Discord's 1024-char embed field value limit
 
@@ -120,6 +123,7 @@ async def reveal_anecdote(
             db, anecdote.guild_id, votes, anecdote.target_id, anecdote.author_id
         )
         anecdote = await Anecdote.update(db, anecdote.id, state="REVEALING")
+        logger.info("Anecdote %s revealed for guild %s", anecdote.id, anecdote.guild_id)
 
     if anecdote.reveal_message_id is None:
         embed = build_reveal_embed(anecdote, votes, players, discord_guild)

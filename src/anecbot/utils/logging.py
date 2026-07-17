@@ -3,6 +3,7 @@ import logging
 SCOPE_MAP = {
     "anecbot.bot": "BOT",
     "anecbot.models": "DB",
+    "anecbot.features": "FEATURES",
 }
 
 LEVEL_COLORS = {
@@ -16,6 +17,7 @@ LEVEL_COLORS = {
 SCOPE_COLORS = {
     "BOT": "\033[35m",
     "DB": "\033[34m",
+    "FEATURES": "\033[32m",
 }
 
 RESET = "\033[0m"

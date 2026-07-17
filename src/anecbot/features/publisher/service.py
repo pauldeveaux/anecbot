@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from typing import cast
 from zoneinfo import ZoneInfo
@@ -17,6 +18,8 @@ from anecbot.utils.time import (
     parse_days_off,
     utcnow,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def build_anecdote_embed(
@@ -55,6 +58,7 @@ async def publish_next_anecdote(
     embed = build_anecdote_embed(running)
     message = await channel.send(embed=embed)
 
+    logger.info("Anecdote %s published for guild %s", anecdote.id, guild_id)
     return await Anecdote.update(db, anecdote.id, anecdote_message_id=message.id)
 
 
@@ -69,6 +73,7 @@ async def send_empty_queue_warning(
     assert channel is not None
     await channel.send("⚠️ Aucune anecdote à publier aujourd'hui.")
     await Guild.update(db, guild.guild_id, queue_empty_warned=1)
+    logger.info("Empty-queue warning sent for guild %s", guild.guild_id)
 
 
 async def finish_publishing(

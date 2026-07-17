@@ -1,3 +1,4 @@
+import logging
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -22,6 +23,8 @@ from anecbot.utils.time import (
     parse_time,
     to_local,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def is_publication_due(
@@ -73,8 +76,11 @@ async def check_publications(
     guilds = await Guild.list(db, started=1)
     triggered = 0
     for guild in guilds:
-        if await check_publication_for_guild(bot, db, guild, now):
-            triggered += 1
+        try:
+            if await check_publication_for_guild(bot, db, guild, now):
+                triggered += 1
+        except Exception:
+            logger.exception("Publication check failed for guild %s", guild.guild_id)
     return triggered
 
 
@@ -95,7 +101,10 @@ async def check_reveals(
     guilds = await Guild.list(db, started=1)
     total = 0
     for guild in guilds:
-        total += await check_reveal_for_guild(bot, db, guild, now)
+        try:
+            total += await check_reveal_for_guild(bot, db, guild, now)
+        except Exception:
+            logger.exception("Reveal check failed for guild %s", guild.guild_id)
     return total
 
 
@@ -189,6 +198,11 @@ async def check_leaderboard_resets(
     guilds = await Guild.list(db, started=1)
     triggered = 0
     for guild in guilds:
-        if await check_leaderboard_reset_for_guild(bot, db, guild, now):
-            triggered += 1
+        try:
+            if await check_leaderboard_reset_for_guild(bot, db, guild, now):
+                triggered += 1
+        except Exception:
+            logger.exception(
+                "Leaderboard reset check failed for guild %s", guild.guild_id
+            )
     return triggered

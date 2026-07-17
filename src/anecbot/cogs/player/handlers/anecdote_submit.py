@@ -1,3 +1,6 @@
+import logging
+from typing import Any
+
 import discord
 
 from anecbot.features.anecdote.service import create_anecdote, daily_limit_status
@@ -10,6 +13,28 @@ from anecbot.models.player import Player
 from anecbot.shared.views.guild_select import GuildSelectView
 from anecbot.utils.player import display_name
 from anecbot.utils.text import with_blank_lines
+
+logger = logging.getLogger(__name__)
+
+SUBMISSION_ERROR_MESSAGE = "❌ Une erreur est survenue, réessaie plus tard."
+
+
+async def _notify_submission_error(
+    interaction: discord.Interaction, error: Exception
+) -> None:
+    """Log an unexpected submission error and let the user know via an ephemeral message."""
+    logger.exception("Anecdote submission failed", exc_info=error)
+    try:
+        if interaction.response.is_done():
+            await interaction.followup.send(SUBMISSION_ERROR_MESSAGE, ephemeral=True)
+        else:
+            await interaction.response.send_message(
+                SUBMISSION_ERROR_MESSAGE, ephemeral=True
+            )
+    except discord.HTTPException:
+        logger.debug(
+            "Could not notify user %s of submission error", interaction.user.id
+        )
 
 
 class TargetSelectView(discord.ui.View):
@@ -53,6 +78,16 @@ class TargetSelectView(discord.ui.View):
 
         modal = AnecdoteModal(self.guild_id, target_id, self.guild)
         await interaction.response.send_modal(modal)
+
+    async def on_error(
+        self,
+        interaction: discord.Interaction,
+        error: Exception,
+        item: discord.ui.Item[Any],
+        /,
+    ) -> None:
+        """Log and notify the user on an unexpected error during target selection."""
+        await _notify_submission_error(interaction, error)
 
 
 async def _on_guild_selected(interaction: discord.Interaction, guild_id: int) -> None:
@@ -123,6 +158,12 @@ class AnecdoteModal(discord.ui.Modal, title="Soumettre une anecdote"):
         view = ConfirmSubmitView(self.guild_id, self.target_id, text)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
+    async def on_error(
+        self, interaction: discord.Interaction, error: Exception, /
+    ) -> None:
+        """Log and notify the user on an unexpected error during anecdote submission."""
+        await _notify_submission_error(interaction, error)
+
 
 class ConfirmSubmitView(discord.ui.View):
     """Confirm or cancel a pending anecdote submission."""
@@ -152,6 +193,16 @@ class ConfirmSubmitView(discord.ui.View):
         await interaction.response.edit_message(
             content="❌ Soumission annulée.", embed=None, view=None
         )
+
+    async def on_error(
+        self,
+        interaction: discord.Interaction,
+        error: Exception,
+        item: discord.ui.Item[Any],
+        /,
+    ) -> None:
+        """Log and notify the user on an unexpected error during confirmation."""
+        await _notify_submission_error(interaction, error)
 
 
 async def handle(interaction: discord.Interaction):

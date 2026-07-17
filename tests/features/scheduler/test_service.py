@@ -276,15 +276,50 @@ async def test_check_publications_only_checks_started_guilds(db, players):
     assert len(channel.sent_embeds) == 1
 
 
+@pytest.mark.asyncio
+async def test_check_publications_continues_after_guild_failure(db, players):
+    """A guild whose publish attempt raises doesn't stop other guilds from being checked."""
+    await Anecdote.create(
+        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="boom"
+    )
+    other_channel_id = 777
+    await Guild.upsert(
+        db, OTHER_GUILD_ID, channel_id=other_channel_id, started=1, publish_time="15:00"
+    )
+    await Player.upsert(db, OTHER_GUILD_ID, AUTHOR_ID, can_submit=1)
+    await Player.upsert(db, OTHER_GUILD_ID, TARGET_ID, can_be_target=1)
+    await Anecdote.create(
+        db,
+        guild_id=OTHER_GUILD_ID,
+        author_id=AUTHOR_ID,
+        target_id=TARGET_ID,
+        content="ok",
+    )
+    other_channel = _FakeChannel()
+    # GUILD_ID's own channel (CHANNEL_ID) is deliberately not registered with the fake bot,
+    # so its publish attempt raises inside publish_next_anecdote's channel assertion.
+    bot = _FakeBot({other_channel_id: other_channel})
+
+    triggered = await check_publications(
+        cast(discord.Client, bot), db, datetime(2026, 7, 13, 15, 0)
+    )
+
+    assert triggered == 1
+    assert len(other_channel.sent_embeds) == 1
+
+
 # --- check_reveal_for_guild / check_reveals ---
 
 
 async def _published_anecdote(
-    db: aiosqlite.Connection, published_at: str, message_id: int = 999
+    db: aiosqlite.Connection,
+    published_at: str,
+    message_id: int = 999,
+    guild_id: int = GUILD_ID,
 ) -> Anecdote:
     """Insert a PUBLISHED anecdote with a fixed published_at and message id."""
     created = await Anecdote.create(
-        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
+        db, guild_id=guild_id, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
     )
     return await Anecdote.update(
         db,
@@ -357,6 +392,32 @@ async def test_check_reveals_sums_across_started_guilds(db, players):
     )
 
     assert total == 1
+
+
+@pytest.mark.asyncio
+async def test_check_reveals_continues_after_guild_failure(db, players):
+    """A guild whose reveal attempt raises doesn't stop other guilds from being revealed."""
+    await _published_anecdote(db, "2026-07-13T15:00:00")
+
+    other_channel_id = 777
+    await Guild.upsert(db, OTHER_GUILD_ID, channel_id=other_channel_id, started=1)
+    await Player.upsert(db, OTHER_GUILD_ID, AUTHOR_ID, can_submit=1)
+    await Player.upsert(db, OTHER_GUILD_ID, TARGET_ID, can_be_target=1)
+    await _published_anecdote(
+        db, "2026-07-13T15:00:00", message_id=888, guild_id=OTHER_GUILD_ID
+    )
+
+    other_channel = _FakeChannel({888: _FakeMessage(888)})
+    # GUILD_ID's own channel (CHANNEL_ID) is deliberately not registered, so its reveal raises.
+    bot = _FakeBot({other_channel_id: other_channel})
+
+    total = await check_reveals(
+        cast(discord.Client, bot), db, datetime(2026, 7, 14, 14, 0)
+    )
+
+    assert total == 1
+    stored = await Anecdote.list(db, guild_id=OTHER_GUILD_ID, state="REVEALED")
+    assert len(stored) == 1
 
 
 # --- is_leaderboard_reset_due ---
@@ -607,3 +668,31 @@ async def test_check_leaderboard_resets_only_checks_started_guilds(db, players):
     )
 
     assert triggered == 1
+
+
+@pytest.mark.asyncio
+async def test_check_leaderboard_resets_continues_after_guild_failure(db, players):
+    """A guild with an invalid timezone doesn't stop other guilds' leaderboard resets."""
+    await Guild.upsert(
+        db,
+        GUILD_ID,
+        leaderboard_reset_mode=LeaderboardResetMode.DAILY,
+        timezone="Not/AValidZone",
+    )
+    await Guild.upsert(
+        db,
+        OTHER_GUILD_ID,
+        channel_id=CHANNEL_ID,
+        started=1,
+        leaderboard_reset_mode=LeaderboardResetMode.DAILY,
+    )
+    await LeaderboardEntry.upsert(db, OTHER_GUILD_ID, AUTHOR_ID, points=5)
+    channel = _FakeChannel()
+    bot = _FakeBot({CHANNEL_ID: channel})
+
+    triggered = await check_leaderboard_resets(
+        cast(discord.Client, bot), db, datetime(2026, 7, 13, 15, 0)
+    )
+
+    assert triggered == 1
+    assert await LeaderboardEntry.list(db, guild_id=OTHER_GUILD_ID) == []
