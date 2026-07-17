@@ -1,9 +1,6 @@
 import discord
 
-from anecbot.features.anecdote.service import (
-    discard_pending_anecdotes,
-    player_has_anecdotes,
-)
+from anecbot.features.player.service import cleanup_if_fully_removed
 from anecbot.models.enums import PlayerRole
 from anecbot.models.player import Player
 
@@ -12,6 +9,7 @@ class ServerSelectView(discord.ui.View):
     """Select menu to choose the server for leave (DM with multiple guilds)."""
 
     def __init__(self, guilds: list[tuple[int, str]], role: str):
+        """Build the server select menu for the given candidate guilds and role."""
         super().__init__(timeout=120)
         self.role = role
         options = [
@@ -81,17 +79,7 @@ async def _do_leave(
         )
         label = "tous les rôles"
 
-    updated = await Player.get(db, guild_id, interaction.user.id)
-    if (
-        updated
-        and not updated.can_submit
-        and not updated.can_be_target
-        and not updated.banned_submit
-        and not updated.banned_target
-    ):
-        await discard_pending_anecdotes(db, guild_id, interaction.user.id)
-        if not await player_has_anecdotes(db, guild_id, interaction.user.id):
-            await Player.delete(db, guild_id, interaction.user.id)
+    await cleanup_if_fully_removed(db, guild_id, interaction.user.id)
 
     msg = f"✅ Tu as quitté : {label}."
     if edit:

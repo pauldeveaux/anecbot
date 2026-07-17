@@ -15,3 +15,4 @@ class Vote(Model):
     user_id: int = 0
     voted_for_id: int = 0
     voted_at: str = ""
+    guild_id: int = 0

@@ -10,37 +10,19 @@ from anecbot.features.player.service import (
     is_active_submitter,
 )
 from anecbot.models.player import Player
+from anecbot.shared.views.errors import notify_unexpected_error
 from anecbot.shared.views.guild_select import GuildSelectView
 from anecbot.utils.player import display_name
 from anecbot.utils.text import with_blank_lines
 
 logger = logging.getLogger(__name__)
 
-SUBMISSION_ERROR_MESSAGE = "❌ Une erreur est survenue, réessaie plus tard."
-
-
-async def _notify_submission_error(
-    interaction: discord.Interaction, error: Exception
-) -> None:
-    """Log an unexpected submission error and let the user know via an ephemeral message."""
-    logger.exception("Anecdote submission failed", exc_info=error)
-    try:
-        if interaction.response.is_done():
-            await interaction.followup.send(SUBMISSION_ERROR_MESSAGE, ephemeral=True)
-        else:
-            await interaction.response.send_message(
-                SUBMISSION_ERROR_MESSAGE, ephemeral=True
-            )
-    except discord.HTTPException:
-        logger.debug(
-            "Could not notify user %s of submission error", interaction.user.id
-        )
-
 
 class TargetSelectView(discord.ui.View):
     """Select menu to choose the anecdote target."""
 
     def __init__(self, guild_id: int, targets: list[Player], guild: discord.Guild):
+        """Build the target select menu, capped to Discord's 25-option limit."""
         super().__init__(timeout=120)
         self.guild_id = guild_id
         self.guild = guild
@@ -87,7 +69,7 @@ class TargetSelectView(discord.ui.View):
         /,
     ) -> None:
         """Log and notify the user on an unexpected error during target selection."""
-        await _notify_submission_error(interaction, error)
+        await notify_unexpected_error(interaction, error, logger)
 
 
 async def _on_guild_selected(interaction: discord.Interaction, guild_id: int) -> None:
@@ -135,6 +117,7 @@ class AnecdoteModal(discord.ui.Modal, title="Soumettre une anecdote"):
     )
 
     def __init__(self, guild_id: int, target_id: int, guild: discord.Guild):
+        """Store the guild and target for the anecdote being submitted."""
         super().__init__()
         self.guild_id = guild_id
         self.target_id = target_id
@@ -162,13 +145,14 @@ class AnecdoteModal(discord.ui.Modal, title="Soumettre une anecdote"):
         self, interaction: discord.Interaction, error: Exception, /
     ) -> None:
         """Log and notify the user on an unexpected error during anecdote submission."""
-        await _notify_submission_error(interaction, error)
+        await notify_unexpected_error(interaction, error, logger)
 
 
 class ConfirmSubmitView(discord.ui.View):
     """Confirm or cancel a pending anecdote submission."""
 
     def __init__(self, guild_id: int, target_id: int, content: str):
+        """Store the anecdote's pending guild, target, and content for confirm/cancel."""
         super().__init__(timeout=300)
         self.guild_id = guild_id
         self.target_id = target_id
@@ -202,7 +186,7 @@ class ConfirmSubmitView(discord.ui.View):
         /,
     ) -> None:
         """Log and notify the user on an unexpected error during confirmation."""
-        await _notify_submission_error(interaction, error)
+        await notify_unexpected_error(interaction, error, logger)
 
 
 async def handle(interaction: discord.Interaction):

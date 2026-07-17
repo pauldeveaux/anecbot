@@ -5,7 +5,11 @@ from typing import cast
 import aiosqlite
 import discord
 
-from anecbot.features.leaderboard.repository import delete_all_entries
+from anecbot.features.leaderboard.repository import (
+    claim_leaderboard_reset,
+    delete_all_entries,
+    mark_leaderboard_published,
+)
 from anecbot.models.guild import Guild
 from anecbot.models.leaderboard import LeaderboardEntry
 from anecbot.models.player import Player
@@ -88,10 +92,30 @@ async def publish_leaderboard(
     await channel.send(embed=embed)
 
 
+async def claim_leaderboard_reset_cycle(
+    db: aiosqlite.Connection, guild_id: int
+) -> bool:
+    """Atomically claim the leaderboard reset cycle; return False if one is already in progress."""
+    return await claim_leaderboard_reset(db, guild_id)
+
+
+async def mark_leaderboard_reset_published(
+    db: aiosqlite.Connection, guild_id: int
+) -> None:
+    """Record that the pre-reset standings message was sent for the current cycle."""
+    await mark_leaderboard_published(db, guild_id)
+
+
 async def reset_leaderboard(
     db: aiosqlite.Connection, guild_id: int, now: datetime
 ) -> None:
-    """Clear every leaderboard entry for the guild and stamp the reset time."""
+    """Clear every leaderboard entry, stamp the reset time, and clear the reset checkpoint."""
     await delete_all_entries(db, guild_id)
-    await Guild.upsert(db, guild_id, last_leaderboard_reset_at=now.isoformat())
+    await Guild.upsert(
+        db,
+        guild_id,
+        last_leaderboard_reset_at=now.isoformat(),
+        leaderboard_reset_in_progress=0,
+        leaderboard_reset_published=0,
+    )
     logger.info("Leaderboard reset for guild %s", guild_id)

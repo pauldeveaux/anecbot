@@ -129,6 +129,44 @@ async def test_non_sql_files_are_ignored(migrations_dir):
 
 
 @pytest.mark.asyncio
+async def test_migration_failure_rolls_back_and_can_be_retried(migrations_dir):
+    """A migration that fails partway leaves no trace, and a corrected retry applies cleanly."""
+    migrations_dir.mkdir()
+    (migrations_dir / "0001_broken.sql").write_text(
+        "CREATE TABLE foo (id INTEGER PRIMARY KEY);\n"
+        "INSERT INTO not_a_real_table (id) VALUES (1);"
+    )
+
+    db = await aiosqlite.connect(":memory:")
+    try:
+        with pytest.raises(Exception):
+            await run_migrations(db, migrations_dir)
+
+        version = await fetchall(db, "SELECT version FROM schema_version")
+        assert version[0][0] == 0
+
+        tables = await fetchall(
+            db, "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+        )
+        table_names = [t[0] for t in tables]
+        assert "foo" not in table_names
+
+        (migrations_dir / "0001_broken.sql").write_text(
+            "CREATE TABLE foo (id INTEGER PRIMARY KEY);"
+        )
+        await run_migrations(db, migrations_dir)
+
+        version = await fetchall(db, "SELECT version FROM schema_version")
+        assert version[0][0] == 1
+        tables = await fetchall(
+            db, "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+        )
+        assert "foo" in [t[0] for t in tables]
+    finally:
+        await db.close()
+
+
+@pytest.mark.asyncio
 async def test_init_db_creates_file_and_runs_migrations():
     """Test init_db creates the file, enables WAL and foreign keys, and runs migrations."""
     with tempfile.TemporaryDirectory() as tmp:

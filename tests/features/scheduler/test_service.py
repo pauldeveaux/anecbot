@@ -646,6 +646,68 @@ async def test_check_leaderboard_reset_for_guild_publishes_then_resets(db, playe
     updated = await Guild.get(db, GUILD_ID)
     assert updated is not None
     assert updated.last_leaderboard_reset_at == now.isoformat()
+    assert updated.leaderboard_reset_in_progress == 0
+    assert updated.leaderboard_reset_published == 0
+
+
+@pytest.mark.asyncio
+async def test_check_leaderboard_reset_resumes_without_republishing_when_already_sent(
+    db, players
+):
+    """A crash after the standings were published but before the reset completed doesn't repost."""
+    await Guild.upsert(
+        db,
+        GUILD_ID,
+        leaderboard_reset_mode=LeaderboardResetMode.DAILY,
+        leaderboard_reset_in_progress=1,
+        leaderboard_reset_published=1,
+    )
+    await LeaderboardEntry.upsert(db, GUILD_ID, AUTHOR_ID, points=5)
+    guild = await Guild.get(db, GUILD_ID)
+    assert guild is not None
+    channel = _FakeChannel()
+    bot = _FakeBot({CHANNEL_ID: channel})
+    now = datetime(2026, 7, 13, 15, 0)
+
+    triggered = await check_leaderboard_reset_for_guild(
+        cast(discord.Client, bot), db, guild, now
+    )
+
+    assert triggered is True
+    assert channel.sent_embeds == []
+    assert await LeaderboardEntry.list(db, guild_id=GUILD_ID) == []
+    updated = await Guild.get(db, GUILD_ID)
+    assert updated is not None
+    assert updated.leaderboard_reset_in_progress == 0
+    assert updated.leaderboard_reset_published == 0
+
+
+@pytest.mark.asyncio
+async def test_check_leaderboard_reset_resumes_and_publishes_when_not_yet_sent(
+    db, players
+):
+    """A crash claimed but before publishing resumes by publishing once, then resetting."""
+    await Guild.upsert(
+        db,
+        GUILD_ID,
+        leaderboard_reset_mode=LeaderboardResetMode.DAILY,
+        leaderboard_reset_in_progress=1,
+        leaderboard_reset_published=0,
+    )
+    await LeaderboardEntry.upsert(db, GUILD_ID, AUTHOR_ID, points=5)
+    guild = await Guild.get(db, GUILD_ID)
+    assert guild is not None
+    channel = _FakeChannel()
+    bot = _FakeBot({CHANNEL_ID: channel})
+    now = datetime(2026, 7, 13, 15, 0)
+
+    triggered = await check_leaderboard_reset_for_guild(
+        cast(discord.Client, bot), db, guild, now
+    )
+
+    assert triggered is True
+    assert len(channel.sent_embeds) == 1
+    assert await LeaderboardEntry.list(db, guild_id=GUILD_ID) == []
 
 
 @pytest.mark.asyncio

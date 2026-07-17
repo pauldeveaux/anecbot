@@ -8,6 +8,7 @@ from anecbot.features.anecdote.repository import (
     has_any_for_user,
 )
 from anecbot.models.anecdote import Anecdote
+from anecbot.models.enums import AnecdoteState
 from anecbot.models.guild import Guild
 
 logger = logging.getLogger(__name__)
@@ -50,7 +51,7 @@ async def get_pending_by_author(
 ) -> list[Anecdote]:
     """Return the author's PENDING anecdotes in the guild, most recent first."""
     anecdotes = await Anecdote.list(
-        db, guild_id=guild_id, author_id=author_id, state="PENDING"
+        db, guild_id=guild_id, author_id=author_id, state=AnecdoteState.PENDING
     )
     return sorted(anecdotes, key=lambda a: (a.created_at, a.id), reverse=True)
 
@@ -63,7 +64,7 @@ async def get_owned_pending_anecdote(
     if (
         anecdote is None
         or anecdote.author_id != author_id
-        or anecdote.state != "PENDING"
+        or anecdote.state != AnecdoteState.PENDING
     ):
         return None
     return anecdote

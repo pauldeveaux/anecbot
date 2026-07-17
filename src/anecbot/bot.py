@@ -92,11 +92,14 @@ def create_bot(settings: Settings) -> Bot:
                 ephemeral=True,
             )
         else:
-            logger.error(
-                "Unhandled command error in '%s' (data=%s): %s",
-                interaction.command.name if interaction.command else "unknown",
+            command_name = (
+                interaction.command.name if interaction.command else "unknown"
+            )
+            logger.error("Unhandled command error in '%s': %s", command_name, error)
+            logger.debug(
+                "Command error interaction data (%s): %s",
+                command_name,
                 interaction.data,
-                error,
             )
             if not interaction.response.is_done():
                 await interaction.response.send_message(

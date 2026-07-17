@@ -23,6 +23,7 @@ class RegisterSubmittersView(discord.ui.View):
     """Persistent view with a registration button for submitters."""
 
     def __init__(self, required_role_id: int | None = None):
+        """Build the persistent registration button, encoding the required role in its custom_id."""
         super().__init__(timeout=None)
         self.button = discord.ui.Button(
             label="S'inscrire",

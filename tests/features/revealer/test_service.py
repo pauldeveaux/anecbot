@@ -330,6 +330,33 @@ async def test_reveal_anecdote_resumes_from_revealing_without_reawarding(db, pla
 
 
 @pytest.mark.asyncio
+async def test_reveal_anecdote_does_not_reaward_points_on_retry_from_published(
+    db, players
+):
+    """A crash after award_points but before the REVEALING write must not double-award on retry."""
+    anecdote = await _published_anecdote(db, "2026-07-13T15:00:00")
+    await Vote.upsert(db, anecdote.id, VOTER_ID, voted_for_id=TARGET_ID)
+    channel = _FakeChannel({999: _FakeMessage(999)})
+    bot = _FakeBot({CHANNEL_ID: channel}, guild=_FakeGuild(GUILD_ID))
+
+    await reveal_anecdote(cast(discord.Client, bot), db, anecdote)
+    # Simulate a crash that rolled the anecdote back to PUBLISHED after points were already
+    # awarded (e.g. a retried batch tick re-reading a stale in-memory anecdote).
+    stale = await Anecdote.update(db, anecdote.id, state="PUBLISHED")
+    channel2 = _FakeChannel({999: _FakeMessage(999)})
+    bot2 = _FakeBot({CHANNEL_ID: channel2}, guild=_FakeGuild(GUILD_ID))
+
+    await reveal_anecdote(cast(discord.Client, bot2), db, stale)
+
+    voter_entry = await LeaderboardEntry.get(db, GUILD_ID, VOTER_ID)
+    assert voter_entry is not None
+    assert voter_entry.points == 1
+    author_entry = await LeaderboardEntry.get(db, GUILD_ID, AUTHOR_ID)
+    assert author_entry is not None
+    assert author_entry.points == 1
+
+
+@pytest.mark.asyncio
 async def test_reveal_anecdote_resumes_from_revealing_with_reply_already_sent(
     db, players
 ):

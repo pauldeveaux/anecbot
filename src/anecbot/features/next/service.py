@@ -7,7 +7,7 @@ import aiosqlite
 from anecbot.features.next.repository import earliest_pending_reveal, last_published_at
 from anecbot.features.scheduler.service import is_publication_due
 from anecbot.models.anecdote import Anecdote
-from anecbot.models.enums import LeaderboardResetMode
+from anecbot.models.enums import AnecdoteState, LeaderboardResetMode
 from anecbot.models.guild import Guild
 from anecbot.utils.time import (
     next_leaderboard_reset_datetime,
@@ -45,7 +45,9 @@ async def get_next_events(
             publication_overdue=False,
         )
 
-    pending_count = await Anecdote.count(db, guild_id=guild_id, state="PENDING")
+    pending_count = await Anecdote.count(
+        db, guild_id=guild_id, state=AnecdoteState.PENDING
+    )
     days_off = parse_days_off(guild.days_off)
     tz = ZoneInfo(guild.timezone)
 

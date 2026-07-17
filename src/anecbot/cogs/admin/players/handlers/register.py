@@ -4,7 +4,7 @@ import discord
 
 from anecbot.cogs.admin.base import get_db
 from anecbot.cogs.admin.players.handlers.registration import send_dm
-from anecbot.features.player.service import can_register_as_target
+from anecbot.features.player.service import MAX_TARGETS, can_register_as_target
 from anecbot.models.enums import PlayerRole
 from anecbot.models.guild import Guild
 from anecbot.models.player import Player
@@ -51,7 +51,7 @@ async def handle(
         PlayerRole.ALL,
     ) and not await can_register_as_target(db, interaction.guild_id, user.id):
         await interaction.response.send_message(
-            "❌ Le nombre maximum de cibles (25) est atteint pour ce serveur.",
+            f"❌ Le nombre maximum de cibles ({MAX_TARGETS}) est atteint pour ce serveur.",
             ephemeral=True,
         )
         return

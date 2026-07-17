@@ -15,6 +15,7 @@ class McqView(discord.ui.View):
     """MCQ select menu for guessing who an anecdote is about."""
 
     def __init__(self, anecdote_id: int, targets: list[Player], guild: discord.Guild):
+        """Build the target select menu, capped to Discord's 25-option limit."""
         super().__init__(timeout=None)
         self.anecdote_id = anecdote_id
         options = [

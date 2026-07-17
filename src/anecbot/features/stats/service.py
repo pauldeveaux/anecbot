@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import aiosqlite
 
 from anecbot.models.anecdote import Anecdote
+from anecbot.models.enums import AnecdoteState
 from anecbot.models.guild import Guild
 from anecbot.models.player import Player
 
@@ -27,9 +28,15 @@ async def get_guild_stats(db: aiosqlite.Connection, guild_id: int) -> GuildStats
     guild = await Guild.get(db, guild_id)
 
     anecdotes_total = await Anecdote.count(db, guild_id=guild_id)
-    anecdotes_pending = await Anecdote.count(db, guild_id=guild_id, state="PENDING")
-    anecdotes_published = await Anecdote.count(db, guild_id=guild_id, state="PUBLISHED")
-    anecdotes_revealed = await Anecdote.count(db, guild_id=guild_id, state="REVEALED")
+    anecdotes_pending = await Anecdote.count(
+        db, guild_id=guild_id, state=AnecdoteState.PENDING
+    )
+    anecdotes_published = await Anecdote.count(
+        db, guild_id=guild_id, state=AnecdoteState.PUBLISHED
+    )
+    anecdotes_revealed = await Anecdote.count(
+        db, guild_id=guild_id, state=AnecdoteState.REVEALED
+    )
 
     players_total = await Player.count(db, guild_id=guild_id)
     players_submitters = await Player.count(db, guild_id=guild_id, can_submit=1)

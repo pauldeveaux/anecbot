@@ -10,6 +10,7 @@ from anecbot.features.player.service import get_active_targets
 from anecbot.features.publisher.views import McqView
 from anecbot.features.selector.service import select_pending_anecdote
 from anecbot.models.anecdote import Anecdote
+from anecbot.models.enums import AnecdoteState
 from anecbot.models.guild import Guild
 from anecbot.utils.text import ZERO_WIDTH_SPACE, with_blank_lines
 from anecbot.utils.time import (
@@ -42,7 +43,12 @@ def build_anecdote_embed(
 async def publish_next_anecdote(
     bot: discord.Client, db: aiosqlite.Connection, guild_id: int
 ) -> Anecdote | None:
-    """Publish a weighted-random PENDING anecdote for the guild and transition it to RUNNING."""
+    """Publish a weighted-random PENDING anecdote for the guild and transition it to RUNNING.
+
+    The state transition and anecdote_message_id are written together in a single update right
+    after the message is sent, so a crash never leaves an anecdote RUNNING without its message id
+    (which would otherwise make crash recovery unable to tell a message was already sent).
+    """
     anecdote = await select_pending_anecdote(db, guild_id, utcnow())
     if anecdote is None:
         return None
@@ -53,13 +59,13 @@ async def publish_next_anecdote(
     channel = cast("discord.abc.Messageable | None", bot.get_channel(guild.channel_id))
     assert channel is not None
 
-    running = await Anecdote.update(db, anecdote.id, state="RUNNING")
-
-    embed = build_anecdote_embed(running)
+    embed = build_anecdote_embed(anecdote)
     message = await channel.send(embed=embed)
 
     logger.info("Anecdote %s published for guild %s", anecdote.id, guild_id)
-    return await Anecdote.update(db, anecdote.id, anecdote_message_id=message.id)
+    return await Anecdote.update(
+        db, anecdote.id, state=AnecdoteState.RUNNING, anecdote_message_id=message.id
+    )
 
 
 async def send_empty_queue_warning(
@@ -105,7 +111,10 @@ async def finish_publishing(
     await message.edit(embed=embed, view=view)
 
     return await Anecdote.update(
-        db, anecdote.id, state="PUBLISHED", published_at=published_at.isoformat()
+        db,
+        anecdote.id,
+        state=AnecdoteState.PUBLISHED,
+        published_at=published_at.isoformat(),
     )
 
 
@@ -132,12 +141,12 @@ async def recover_stuck_publications(
     if guild is None or guild.channel_id is None:
         return 0
 
-    stuck = await Anecdote.list(db, guild_id=guild_id, state="RUNNING")
+    stuck = await Anecdote.list(db, guild_id=guild_id, state=AnecdoteState.RUNNING)
     for anecdote in stuck:
         if anecdote.anecdote_message_id is not None:
             await finish_publishing(bot, db, guild, anecdote)
         else:
-            await Anecdote.update(db, anecdote.id, state="PENDING")
+            await Anecdote.update(db, anecdote.id, state=AnecdoteState.PENDING)
     return len(stuck)
 
 
@@ -155,7 +164,9 @@ async def refresh_published_reveal_dates(
 
     days_off = parse_days_off(guild.days_off)
     tz = ZoneInfo(guild.timezone)
-    published = await Anecdote.list(db, guild_id=guild_id, state="PUBLISHED")
+    published = await Anecdote.list(
+        db, guild_id=guild_id, state=AnecdoteState.PUBLISHED
+    )
 
     for anecdote in published:
         if anecdote.anecdote_message_id is None or anecdote.published_at is None:

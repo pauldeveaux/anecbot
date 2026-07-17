@@ -3,10 +3,7 @@ import logging
 import discord
 
 from anecbot.cogs.admin.base import get_db
-from anecbot.features.anecdote.service import (
-    discard_pending_anecdotes,
-    player_has_anecdotes,
-)
+from anecbot.features.player.service import cleanup_if_fully_removed
 from anecbot.models.enums import PlayerRole
 from anecbot.models.player import Player
 
@@ -35,10 +32,7 @@ async def handle(
         await Player.update(
             db, interaction.guild_id, user.id, can_submit=0, can_be_target=0
         )
-        if not has_ban:
-            await discard_pending_anecdotes(db, interaction.guild_id, user.id)
-            if not await player_has_anecdotes(db, interaction.guild_id, user.id):
-                await Player.delete(db, interaction.guild_id, user.id)
+        await cleanup_if_fully_removed(db, interaction.guild_id, user.id)
 
         if has_ban:
             msg = f"✅ Rôles retirés pour {user.mention} (le ban reste actif)."
@@ -56,17 +50,7 @@ async def handle(
         await Player.update(db, interaction.guild_id, user.id, can_be_target=0)
         label = "cible"
 
-    updated = await Player.get(db, interaction.guild_id, user.id)
-    if (
-        updated
-        and not updated.can_submit
-        and not updated.can_be_target
-        and not updated.banned_submit
-        and not updated.banned_target
-    ):
-        await discard_pending_anecdotes(db, interaction.guild_id, user.id)
-        if not await player_has_anecdotes(db, interaction.guild_id, user.id):
-            await Player.delete(db, interaction.guild_id, user.id)
+    await cleanup_if_fully_removed(db, interaction.guild_id, user.id)
 
     logger.info(
         "User %s unregistered from role %s in guild %s",

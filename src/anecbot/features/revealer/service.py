@@ -7,7 +7,9 @@ import aiosqlite
 import discord
 
 from anecbot.features.leaderboard.service import award_points, publish_leaderboard
+from anecbot.features.revealer.repository import claim_points_award
 from anecbot.models.anecdote import Anecdote
+from anecbot.models.enums import AnecdoteState
 from anecbot.models.guild import Guild
 from anecbot.models.player import Player
 from anecbot.models.vote import Vote
@@ -30,9 +32,13 @@ async def get_due_reveals(
 
     days_off = parse_days_off(guild.days_off)
     tz = ZoneInfo(guild.timezone)
-    published = await Anecdote.list(db, guild_id=guild_id, state="PUBLISHED")
+    published = await Anecdote.list(
+        db, guild_id=guild_id, state=AnecdoteState.PUBLISHED
+    )
 
-    due = list(await Anecdote.list(db, guild_id=guild_id, state="REVEALING"))
+    due = list(
+        await Anecdote.list(db, guild_id=guild_id, state=AnecdoteState.REVEALING)
+    )
     for anecdote in published:
         assert anecdote.published_at is not None
         published_at = datetime.fromisoformat(anecdote.published_at)
@@ -101,8 +107,9 @@ async def reveal_anecdote(
     """Close voting, award points, reply with the reveal, mark REVEALED.
 
     Split into two checkpoints (PUBLISHED -> REVEALING -> REVEALED) so a crash mid-flight can
-    resume without ever re-awarding points: once REVEALING is reached, only the reply-sending step
-    (guarded by reveal_message_id) can still run again.
+    resume safely: award_points is gated by the points_awarded flag (claimed atomically before
+    awarding), so a retry after a crash never awards points twice; once REVEALING is reached,
+    only the reply-sending step (guarded by reveal_message_id) can still run again.
     """
     guild = await Guild.get(db, anecdote.guild_id)
     assert guild is not None
@@ -117,12 +124,13 @@ async def reveal_anecdote(
     players = {p.user_id: p for p in await Player.list(db, guild_id=anecdote.guild_id)}
     discord_guild = bot.get_guild(anecdote.guild_id)
 
-    if anecdote.state == "PUBLISHED":
+    if anecdote.state == AnecdoteState.PUBLISHED:
         await message.edit(view=None)
-        await award_points(
-            db, anecdote.guild_id, votes, anecdote.target_id, anecdote.author_id
-        )
-        anecdote = await Anecdote.update(db, anecdote.id, state="REVEALING")
+        if await claim_points_award(db, anecdote.id):
+            await award_points(
+                db, anecdote.guild_id, votes, anecdote.target_id, anecdote.author_id
+            )
+        anecdote = await Anecdote.update(db, anecdote.id, state=AnecdoteState.REVEALING)
         logger.info("Anecdote %s revealed for guild %s", anecdote.id, anecdote.guild_id)
 
     if anecdote.reveal_message_id is None:
@@ -130,7 +138,7 @@ async def reveal_anecdote(
         reply = await message.reply(embed=embed)
         anecdote = await Anecdote.update(db, anecdote.id, reveal_message_id=reply.id)
 
-    return await Anecdote.update(db, anecdote.id, state="REVEALED")
+    return await Anecdote.update(db, anecdote.id, state=AnecdoteState.REVEALED)
 
 
 async def reveal_due_anecdotes(

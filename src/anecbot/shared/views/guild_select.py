@@ -11,6 +11,7 @@ class GuildSelectView(discord.ui.View):
         guilds: list[tuple[int, str]],
         on_select: Callable[[discord.Interaction, int], Awaitable[None]],
     ):
+        """Build the server select menu and store the callback to invoke on selection."""
         super().__init__(timeout=120)
         self._on_select = on_select
         options = [

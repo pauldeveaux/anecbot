@@ -18,6 +18,7 @@ class PlayerCog(commands.Cog):
     """Player-facing commands (DM and guild)."""
 
     def __init__(self, bot: commands.Bot):
+        """Store the bot instance for use by the command handlers."""
         self.bot = bot
 
     @app_commands.command(
