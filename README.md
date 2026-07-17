@@ -34,6 +34,39 @@ Set via environment variables (`.env`, see `.env.example`):
 | `LOG_LEVEL` | `INFO` | Log verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`, ...); invalid values fall back to `INFO` |
 | `LOG_FILE` | `data/anecbot.log` | Log file path |
 
+## Deployment (Docker)
+
+First-time setup on the VPS:
+
+```bash
+git clone <repo-url>
+cd anecbot
+cp .env.example .env
+# Set DISCORD_TOKEN in .env
+
+# The container runs as uid 1000; the bind-mounted data dir must be writable by it
+mkdir -p data && sudo chown 1000:1000 data
+
+docker compose up -d --build
+```
+
+`data/anecbot.db` and `data/anecbot.log` are persisted on the host under `./data`, so rebuilding the
+image doesn't lose data. `restart: unless-stopped` restarts the container if the bot crashes or the
+VPS reboots.
+
+To update after pulling new changes:
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+View logs:
+
+```bash
+docker compose logs -f
+```
+
 ## Logs
 
 Logs are written both to the console (colored) and to `LOG_FILE` (plain text). The log file rotates
