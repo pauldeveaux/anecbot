@@ -4,6 +4,7 @@ from typing import Any
 import discord
 
 from anecbot.cogs.admin.base import get_db
+from anecbot.features.lifecycle.service import stop_game
 from anecbot.models.guild import Guild
 from anecbot.shared.views.errors import notify_unexpected_error
 
@@ -22,10 +23,9 @@ class StopConfirmView(discord.ui.View):
     async def confirm(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
-        """Stop the game."""
+        """Stop the game and announce it publicly."""
         db = get_db(interaction)
-        await Guild.upsert(db, self.guild_id, started=0)
-        logger.info("Game stopped for guild %s", self.guild_id)
+        await stop_game(interaction.client, db, self.guild_id)
         await interaction.response.edit_message(
             content="✅ Jeu mis en pause. Les publications sont arrêtées.",
             view=None,
