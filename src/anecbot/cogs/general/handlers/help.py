@@ -33,6 +33,8 @@ ADMIN_GUIDE = (
     "- `/start` — lancer les publications automatiques\n"
     "- `/stop` — mettre en pause\n"
     "- `/reset` — tout supprimer et recommencer\n\n"
+    "**5. Règles**\n"
+    "- `/publish-rules` — publier les règles du jeu dans le channel configuré\n\n"
 )
 
 DM_GUIDE = (
@@ -45,7 +47,9 @@ DM_GUIDE = (
     "Les commandes suivantes sont disponibles **sur le serveur** :\n"
     "- `/stats` — statistiques du jeu\n"
     "- `/next` — prochains événements\n"
-    "- `/leaderboard` — classement\n"
+    "- `/leaderboard` — classement\n\n"
+    "**Règles**\n"
+    "- `/rules` — revoir les règles du jeu\n"
 )
 
 USER_GUIDE = (
@@ -63,7 +67,9 @@ USER_GUIDE = (
     "- `/next` — voir les prochains événements prévus\n\n"
     "**Leaderboard**\n"
     "- `/leaderboard` — voir le classement actuel\n"
-    "- +1 point par bonne réponse\n"
+    "- +1 point par bonne réponse\n\n"
+    "**Règles**\n"
+    "- `/rules` — revoir les règles du jeu\n"
 )
 
 
