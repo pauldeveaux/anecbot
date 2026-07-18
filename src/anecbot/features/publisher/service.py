@@ -178,3 +178,29 @@ async def refresh_published_reveal_dates(
         message = await channel.fetch_message(anecdote.anecdote_message_id)
         embed = build_anecdote_embed(anecdote, reveal_at)
         await message.edit(embed=embed)
+
+
+async def restore_active_views(bot: discord.Client, db: aiosqlite.Connection) -> None:
+    """Re-register a persistent MCQ view for every still-open anecdote, once on startup.
+
+    McqView instances only live in memory for the process that created them, so a restart
+    otherwise leaves already-published messages with a select menu nothing responds to.
+    """
+    published = await Anecdote.list(db, state=AnecdoteState.PUBLISHED)
+    restored = 0
+    for anecdote in published:
+        if anecdote.anecdote_message_id is None:
+            continue
+        guild = await Guild.get(db, anecdote.guild_id)
+        if guild is None or guild.channel_id is None:
+            continue
+        discord_guild = bot.get_guild(anecdote.guild_id)
+        if discord_guild is None:
+            continue
+
+        targets = await get_active_targets(db, anecdote.guild_id)
+        view = McqView(anecdote.id, targets, discord_guild)
+        bot.add_view(view, message_id=anecdote.anecdote_message_id)
+        restored += 1
+
+    logger.info("Restored %d/%d MCQ view(s)", restored, len(published))

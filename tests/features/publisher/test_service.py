@@ -13,6 +13,7 @@ from anecbot.features.publisher.service import (
     publish_next_anecdote,
     recover_stuck_publications,
     refresh_published_reveal_dates,
+    restore_active_views,
     send_empty_queue_warning,
 )
 from anecbot.models.anecdote import Anecdote
@@ -75,13 +76,14 @@ class _FakeGuild:
 
 
 class _FakeBot:
-    """Stand-in for discord.Client — get_channel/get_guild are used by the service."""
+    """Stand-in for discord.Client — get_channel/get_guild/add_view are used by the service."""
 
     def __init__(
         self, channels: dict[int, _FakeChannel], guild: _FakeGuild | None = None
     ):
         self._channels = channels
         self._guild = guild
+        self.added_views: list[tuple[discord.ui.View, int | None]] = []
 
     def get_channel(self, channel_id: int):
         """Return the fake channel for the given id, or None."""
@@ -90,6 +92,10 @@ class _FakeBot:
     def get_guild(self, guild_id: int):
         """Return the configured fake guild, or None."""
         return self._guild
+
+    def add_view(self, view: discord.ui.View, *, message_id: int | None = None):
+        """Record the view/message_id pair a persistent-view registration was called with."""
+        self.added_views.append((view, message_id))
 
 
 @pytest_asyncio.fixture
@@ -369,3 +375,52 @@ async def test_recover_stuck_publications_no_channel_configured(db):
     count = await recover_stuck_publications(cast(discord.Client, bot), db, GUILD_ID)
 
     assert count == 0
+
+
+# --- restore_active_views ---
+
+
+@pytest.mark.asyncio
+async def test_restore_active_views_registers_a_view_per_published_anecdote(
+    db, players
+):
+    """Each PUBLISHED anecdote gets a persistent view registered, bound to its message id."""
+    anecdote = await Anecdote.create(
+        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
+    )
+    await Anecdote.update(db, anecdote.id, state="PUBLISHED", anecdote_message_id=999)
+    bot = _FakeBot({}, guild=_FakeGuild(GUILD_ID))
+
+    await restore_active_views(cast(discord.Client, bot), db)
+
+    assert len(bot.added_views) == 1
+    view, message_id = bot.added_views[0]
+    assert isinstance(view, discord.ui.View)
+    assert message_id == 999
+
+
+@pytest.mark.asyncio
+async def test_restore_active_views_ignores_other_states(db, players):
+    """PENDING/RUNNING/REVEALED anecdotes get no view registered."""
+    await Anecdote.create(
+        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
+    )
+    bot = _FakeBot({}, guild=_FakeGuild(GUILD_ID))
+
+    await restore_active_views(cast(discord.Client, bot), db)
+
+    assert bot.added_views == []
+
+
+@pytest.mark.asyncio
+async def test_restore_active_views_skips_guild_the_bot_has_left(db, players):
+    """No view is registered when the bot is no longer in the anecdote's guild."""
+    anecdote = await Anecdote.create(
+        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
+    )
+    await Anecdote.update(db, anecdote.id, state="PUBLISHED", anecdote_message_id=999)
+    bot = _FakeBot({}, guild=None)
+
+    await restore_active_views(cast(discord.Client, bot), db)
+
+    assert bot.added_views == []
