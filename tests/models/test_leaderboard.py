@@ -1,24 +1,9 @@
-from pathlib import Path
-
-import aiosqlite
 import pytest
+import psycopg
 import pytest_asyncio
 
-from anecbot.models.database import run_migrations
 from anecbot.models.guild import Guild
 from anecbot.models.leaderboard import LeaderboardEntry
-
-MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations"
-
-
-@pytest_asyncio.fixture
-async def db():
-    """Provide an in-memory database with migrations applied."""
-    conn = await aiosqlite.connect(":memory:")
-    await conn.execute("PRAGMA foreign_keys=ON")
-    await run_migrations(conn, MIGRATIONS_DIR)
-    yield conn
-    await conn.close()
 
 
 @pytest_asyncio.fixture
@@ -83,7 +68,7 @@ async def test_delete_missing(db, guild):
 @pytest.mark.asyncio
 async def test_fk_constraint_guild(db):
     """Creating entry for nonexistent guild fails."""
-    with pytest.raises(aiosqlite.IntegrityError):
+    with pytest.raises(psycopg.IntegrityError):
         await LeaderboardEntry.upsert(db, 999, 10)
 
 

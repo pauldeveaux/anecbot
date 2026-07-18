@@ -2,7 +2,7 @@ import logging
 from datetime import datetime
 from typing import cast
 
-import aiosqlite
+import psycopg
 import discord
 
 from anecbot.features.leaderboard.repository import (
@@ -22,7 +22,7 @@ MAX_LEADERBOARD_ENTRIES = 20
 
 
 async def _add_points(
-    db: aiosqlite.Connection, guild_id: int, user_id: int, points: int
+    db: psycopg.AsyncConnection, guild_id: int, user_id: int, points: int
 ) -> None:
     """Increment a user's leaderboard points by the given amount."""
     entry = await LeaderboardEntry.get(db, guild_id, user_id)
@@ -31,7 +31,7 @@ async def _add_points(
 
 
 async def award_points(
-    db: aiosqlite.Connection,
+    db: psycopg.AsyncConnection,
     guild_id: int,
     votes: list[Vote],
     target_id: int,
@@ -71,7 +71,7 @@ def build_leaderboard_embed(
 
 
 async def publish_leaderboard(
-    bot: discord.Client, db: aiosqlite.Connection, guild_id: int
+    bot: discord.Client, db: psycopg.AsyncConnection, guild_id: int
 ) -> None:
     """Send the current leaderboard standings to the guild's channel."""
     guild = await Guild.get(db, guild_id)
@@ -93,21 +93,21 @@ async def publish_leaderboard(
 
 
 async def claim_leaderboard_reset_cycle(
-    db: aiosqlite.Connection, guild_id: int
+    db: psycopg.AsyncConnection, guild_id: int
 ) -> bool:
     """Atomically claim the leaderboard reset cycle; return False if one is already in progress."""
     return await claim_leaderboard_reset(db, guild_id)
 
 
 async def mark_leaderboard_reset_published(
-    db: aiosqlite.Connection, guild_id: int
+    db: psycopg.AsyncConnection, guild_id: int
 ) -> None:
     """Record that the pre-reset standings message was sent for the current cycle."""
     await mark_leaderboard_published(db, guild_id)
 
 
 async def reset_leaderboard(
-    db: aiosqlite.Connection, guild_id: int, now: datetime
+    db: psycopg.AsyncConnection, guild_id: int, now: datetime
 ) -> None:
     """Clear every leaderboard entry, stamp the reset time, and clear the reset checkpoint."""
     await delete_all_entries(db, guild_id)

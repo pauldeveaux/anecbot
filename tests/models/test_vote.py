@@ -1,26 +1,11 @@
-from pathlib import Path
-
-import aiosqlite
 import pytest
+import psycopg
 import pytest_asyncio
 
 from anecbot.models.anecdote import Anecdote
-from anecbot.models.database import run_migrations
 from anecbot.models.guild import Guild
 from anecbot.models.player import Player
 from anecbot.models.vote import Vote
-
-MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations"
-
-
-@pytest_asyncio.fixture
-async def db():
-    """Provide an in-memory database with migrations applied."""
-    conn = await aiosqlite.connect(":memory:")
-    await conn.execute("PRAGMA foreign_keys=ON")
-    await run_migrations(conn, MIGRATIONS_DIR)
-    yield conn
-    await conn.close()
 
 
 @pytest_asyncio.fixture
@@ -91,7 +76,7 @@ async def test_delete_missing(db, anecdote):
 @pytest.mark.asyncio
 async def test_fk_constraint_anecdote(db):
     """Creating vote for nonexistent anecdote fails."""
-    with pytest.raises(aiosqlite.IntegrityError):
+    with pytest.raises(psycopg.IntegrityError):
         await Vote.upsert(db, 999, 10, voted_for_id=2)
 
 

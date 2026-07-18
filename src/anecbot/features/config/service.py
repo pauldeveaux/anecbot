@@ -1,4 +1,4 @@
-import aiosqlite
+import psycopg
 
 from anecbot.models.enums import GuildTimezone, LeaderboardResetMode
 from anecbot.models.guild import Guild
@@ -20,6 +20,6 @@ DEFAULT_GUILD_CONFIG: dict[str, object] = {
 }
 
 
-async def reset_guild_config(db: aiosqlite.Connection, guild_id: int) -> Guild:
+async def reset_guild_config(db: psycopg.AsyncConnection, guild_id: int) -> Guild:
     """Reset guild configuration to defaults and stop the game."""
     return await Guild.upsert(db, guild_id, **DEFAULT_GUILD_CONFIG)

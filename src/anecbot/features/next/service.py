@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-import aiosqlite
+import psycopg
 
 from anecbot.features.next.repository import earliest_pending_reveal, last_published_at
 from anecbot.features.scheduler.service import is_publication_due
@@ -30,7 +30,7 @@ class NextEvents:
 
 
 async def get_next_events(
-    db: aiosqlite.Connection, guild_id: int, now: datetime
+    db: psycopg.AsyncConnection, guild_id: int, now: datetime
 ) -> NextEvents:
     """Compute next scheduled events for a guild."""
     guild = await Guild.get(db, guild_id)

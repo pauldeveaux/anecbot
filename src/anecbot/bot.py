@@ -2,8 +2,8 @@ import asyncio
 import logging
 from pathlib import Path
 
-import aiosqlite
 import discord
+import psycopg
 from discord import app_commands
 from discord.ext import commands, tasks
 
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 class Bot(commands.Bot):
     """Bot subclass with a database connection attribute."""
 
-    db: aiosqlite.Connection
+    db: psycopg.AsyncConnection
 
 
 def create_bot(settings: Settings) -> Bot:
@@ -76,7 +76,7 @@ def create_bot(settings: Settings) -> Bot:
 
     async def setup_hook() -> None:
         """Initialize the database, load cogs, and start background tasks."""
-        bot.db = await init_db(settings.db_path, Path(settings.migrations_dir))
+        bot.db = await init_db(settings.database_url, Path(settings.migrations_dir))
         logger.info("Database initialized")
         await bot.load_extension("anecbot.cogs")
         logger.info("Cogs loaded")

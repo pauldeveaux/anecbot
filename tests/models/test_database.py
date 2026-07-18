@@ -1,17 +1,40 @@
-import tempfile
+import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, LiteralString, cast
+from urllib.parse import quote
 
-import aiosqlite
+import psycopg
 import pytest
 
 from anecbot.models.database import close_db, init_db, run_migrations
+from tests.conftest import TEST_DATABASE_URL
 
 
-async def fetchall(db: aiosqlite.Connection, sql: str) -> list[Any]:
+async def fetchall(db: psycopg.AsyncConnection, sql: str) -> list[Any]:
     """Execute a query and return all rows as a list."""
-    async with db.execute(sql) as cursor:
-        return list(await cursor.fetchall())
+    cursor = await db.execute(cast(LiteralString, sql))
+    return list(await cursor.fetchall())
+
+
+async def table_names(db: psycopg.AsyncConnection) -> list[str]:
+    """Return the names of every table in the current schema."""
+    rows = await fetchall(
+        db,
+        "SELECT table_name FROM information_schema.tables "
+        "WHERE table_schema = current_schema() ORDER BY table_name",
+    )
+    return [r[0] for r in rows]
+
+
+async def column_names(db: psycopg.AsyncConnection, table: str) -> list[str]:
+    """Return the column names of a table in the current schema."""
+    rows = await fetchall(
+        db,
+        "SELECT column_name FROM information_schema.columns "
+        f"WHERE table_schema = current_schema() AND table_name = '{table}' "
+        "ORDER BY column_name",
+    )
+    return [r[0] for r in rows]
 
 
 @pytest.fixture
@@ -35,48 +58,34 @@ def sample_migrations(migrations_dir):
 
 
 @pytest.mark.asyncio
-async def test_fresh_db_applies_all_migrations(sample_migrations):
+async def test_fresh_db_applies_all_migrations(db_connection, sample_migrations):
     """Apply all migrations on a fresh database and verify final state."""
-    db = await aiosqlite.connect(":memory:")
-    try:
-        await run_migrations(db, sample_migrations)
+    await run_migrations(db_connection, sample_migrations)
 
-        version = await fetchall(db, "SELECT version FROM schema_version")
-        assert version[0][0] == 2
+    version = await fetchall(db_connection, "SELECT version FROM schema_version")
+    assert version[0][0] == 2
 
-        tables = await fetchall(
-            db, "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-        )
-        table_names = [t[0] for t in tables]
-        assert "foo" in table_names
-        assert "bar" in table_names
-    finally:
-        await db.close()
+    tables = await table_names(db_connection)
+    assert "foo" in tables
+    assert "bar" in tables
 
 
 @pytest.mark.asyncio
-async def test_migrations_are_idempotent(sample_migrations):
+async def test_migrations_are_idempotent(db_connection, sample_migrations):
     """Run migrations twice and verify the result is identical."""
-    db = await aiosqlite.connect(":memory:")
-    try:
-        await run_migrations(db, sample_migrations)
-        await run_migrations(db, sample_migrations)
+    await run_migrations(db_connection, sample_migrations)
+    await run_migrations(db_connection, sample_migrations)
 
-        version = await fetchall(db, "SELECT version FROM schema_version")
-        assert version[0][0] == 2
+    version = await fetchall(db_connection, "SELECT version FROM schema_version")
+    assert version[0][0] == 2
 
-        tables = await fetchall(
-            db, "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-        )
-        table_names = [t[0] for t in tables]
-        assert "foo" in table_names
-        assert "bar" in table_names
-    finally:
-        await db.close()
+    tables = await table_names(db_connection)
+    assert "foo" in tables
+    assert "bar" in tables
 
 
 @pytest.mark.asyncio
-async def test_migrations_apply_in_order(migrations_dir):
+async def test_migrations_apply_in_order(db_connection, migrations_dir):
     """Apply migrations incrementally and verify ordering is respected."""
     migrations_dir.mkdir()
 
@@ -84,31 +93,25 @@ async def test_migrations_apply_in_order(migrations_dir):
         "CREATE TABLE items (id INTEGER PRIMARY KEY);"
     )
 
-    db = await aiosqlite.connect(":memory:")
-    try:
-        await run_migrations(db, migrations_dir)
+    await run_migrations(db_connection, migrations_dir)
 
-        version = await fetchall(db, "SELECT version FROM schema_version")
-        assert version[0][0] == 1
+    version = await fetchall(db_connection, "SELECT version FROM schema_version")
+    assert version[0][0] == 1
 
-        (migrations_dir / "0002_add_column.sql").write_text(
-            "ALTER TABLE items ADD COLUMN name TEXT;"
-        )
+    (migrations_dir / "0002_add_column.sql").write_text(
+        "ALTER TABLE items ADD COLUMN name TEXT;"
+    )
 
-        await run_migrations(db, migrations_dir)
+    await run_migrations(db_connection, migrations_dir)
 
-        version = await fetchall(db, "SELECT version FROM schema_version")
-        assert version[0][0] == 2
+    version = await fetchall(db_connection, "SELECT version FROM schema_version")
+    assert version[0][0] == 2
 
-        columns = await fetchall(db, "PRAGMA table_info(items)")
-        column_names = [c[1] for c in columns]
-        assert "name" in column_names
-    finally:
-        await db.close()
+    assert "name" in await column_names(db_connection, "items")
 
 
 @pytest.mark.asyncio
-async def test_non_sql_files_are_ignored(migrations_dir):
+async def test_non_sql_files_are_ignored(db_connection, migrations_dir):
     """Verify that non-SQL files in the migrations directory are skipped."""
     migrations_dir.mkdir()
 
@@ -118,18 +121,16 @@ async def test_non_sql_files_are_ignored(migrations_dir):
     (migrations_dir / "README.md").write_text("This is not a migration.")
     (migrations_dir / "notes.txt").write_text("Ignore me.")
 
-    db = await aiosqlite.connect(":memory:")
-    try:
-        await run_migrations(db, migrations_dir)
+    await run_migrations(db_connection, migrations_dir)
 
-        version = await fetchall(db, "SELECT version FROM schema_version")
-        assert version[0][0] == 1
-    finally:
-        await db.close()
+    version = await fetchall(db_connection, "SELECT version FROM schema_version")
+    assert version[0][0] == 1
 
 
 @pytest.mark.asyncio
-async def test_migration_failure_rolls_back_and_can_be_retried(migrations_dir):
+async def test_migration_failure_rolls_back_and_can_be_retried(
+    db_connection, migrations_dir
+):
     """A migration that fails partway leaves no trace, and a corrected retry applies cleanly."""
     migrations_dir.mkdir()
     (migrations_dir / "0001_broken.sql").write_text(
@@ -137,52 +138,46 @@ async def test_migration_failure_rolls_back_and_can_be_retried(migrations_dir):
         "INSERT INTO not_a_real_table (id) VALUES (1);"
     )
 
-    db = await aiosqlite.connect(":memory:")
-    try:
-        with pytest.raises(Exception):
-            await run_migrations(db, migrations_dir)
+    with pytest.raises(Exception):
+        await run_migrations(db_connection, migrations_dir)
 
-        version = await fetchall(db, "SELECT version FROM schema_version")
-        assert version[0][0] == 0
+    version = await fetchall(db_connection, "SELECT version FROM schema_version")
+    assert version[0][0] == 0
+    assert "foo" not in await table_names(db_connection)
 
-        tables = await fetchall(
-            db, "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-        )
-        table_names = [t[0] for t in tables]
-        assert "foo" not in table_names
+    (migrations_dir / "0001_broken.sql").write_text(
+        "CREATE TABLE foo (id INTEGER PRIMARY KEY);"
+    )
+    await run_migrations(db_connection, migrations_dir)
 
-        (migrations_dir / "0001_broken.sql").write_text(
-            "CREATE TABLE foo (id INTEGER PRIMARY KEY);"
-        )
-        await run_migrations(db, migrations_dir)
-
-        version = await fetchall(db, "SELECT version FROM schema_version")
-        assert version[0][0] == 1
-        tables = await fetchall(
-            db, "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-        )
-        assert "foo" in [t[0] for t in tables]
-    finally:
-        await db.close()
+    version = await fetchall(db_connection, "SELECT version FROM schema_version")
+    assert version[0][0] == 1
+    assert "foo" in await table_names(db_connection)
 
 
 @pytest.mark.asyncio
-async def test_init_db_creates_file_and_runs_migrations():
-    """Test init_db creates the file, enables WAL and foreign keys, and runs migrations."""
-    with tempfile.TemporaryDirectory() as tmp:
-        db_path = str(Path(tmp) / "test.db")
-        migrations_path = Path(__file__).resolve().parent.parent.parent / "migrations"
-        db = await init_db(db_path, migrations_path)
-        try:
-            assert Path(db_path).exists()
+async def test_init_db_connects_and_runs_migrations():
+    """init_db connects, applies the app's real migrations, and returns a usable connection."""
+    schema = f"test_{uuid.uuid4().hex}"
+    setup_conn = await psycopg.AsyncConnection.connect(
+        TEST_DATABASE_URL, autocommit=False
+    )
+    await setup_conn.execute(cast(LiteralString, f'CREATE SCHEMA "{schema}"'))
+    await setup_conn.commit()
 
+    options = quote(f"-c search_path={schema}")
+    scoped_url = f"{TEST_DATABASE_URL}?options={options}"
+    migrations_path = Path(__file__).resolve().parent.parent.parent / "migrations"
+
+    try:
+        db = await init_db(scoped_url, migrations_path)
+        try:
             version = await fetchall(db, "SELECT version FROM schema_version")
             assert version[0][0] >= 1
-
-            journal = await fetchall(db, "PRAGMA journal_mode")
-            assert journal[0][0] == "wal"
-
-            fk = await fetchall(db, "PRAGMA foreign_keys")
-            assert fk[0][0] == 1
+            assert "guilds" in await table_names(db)
         finally:
             await close_db(db)
+    finally:
+        await setup_conn.execute(cast(LiteralString, f'DROP SCHEMA "{schema}" CASCADE'))
+        await setup_conn.commit()
+        await setup_conn.close()

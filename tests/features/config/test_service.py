@@ -1,26 +1,10 @@
-from pathlib import Path
-
-import aiosqlite
 import pytest
-import pytest_asyncio
 
 from anecbot.features.config.service import DEFAULT_GUILD_CONFIG, reset_guild_config
-from anecbot.models.database import run_migrations
 from anecbot.models.enums import GuildTimezone, LeaderboardResetMode
 from anecbot.models.guild import Guild
 
-MIGRATIONS_DIR = Path(__file__).resolve().parents[3] / "migrations"
 GUILD_ID = 100
-
-
-@pytest_asyncio.fixture
-async def db():
-    """Provide an in-memory database with migrations applied."""
-    conn = await aiosqlite.connect(":memory:")
-    await conn.execute("PRAGMA foreign_keys=ON")
-    await run_migrations(conn, MIGRATIONS_DIR)
-    yield conn
-    await conn.close()
 
 
 @pytest.mark.asyncio

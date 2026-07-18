@@ -1,29 +1,15 @@
 from datetime import datetime
-from pathlib import Path
 
-import aiosqlite
+import psycopg
 import pytest
-import pytest_asyncio
 
 from anecbot.models.anecdote import Anecdote
-from anecbot.models.database import run_migrations
 from anecbot.models.enums import GuildTimezone, LeaderboardResetMode
 from anecbot.models.guild import Guild
 from anecbot.models.player import Player
 from anecbot.features.next.service import get_next_events
 
-MIGRATIONS_DIR = Path(__file__).resolve().parents[3] / "migrations"
 GUILD_ID = 100
-
-
-@pytest_asyncio.fixture
-async def db():
-    """Provide an in-memory database with migrations applied."""
-    conn = await aiosqlite.connect(":memory:")
-    await conn.execute("PRAGMA foreign_keys=ON")
-    await run_migrations(conn, MIGRATIONS_DIR)
-    yield conn
-    await conn.close()
 
 
 @pytest.mark.asyncio
@@ -266,13 +252,13 @@ async def test_publication_not_overdue_when_anecdotes_pending(db):
     assert events.publication_overdue is False
 
 
-async def _add_player(db: aiosqlite.Connection, guild_id: int, user_id: int):
+async def _add_player(db: psycopg.AsyncConnection, guild_id: int, user_id: int):
     """Insert a player row."""
     await Player.upsert(db, guild_id, user_id)
 
 
 async def _add_published_anecdote(
-    db: aiosqlite.Connection,
+    db: psycopg.AsyncConnection,
     guild_id: int,
     author: int,
     target: int,
@@ -282,7 +268,7 @@ async def _add_published_anecdote(
     """Insert an anecdote with a published_at timestamp."""
     await db.execute(
         "INSERT INTO anecdotes (guild_id, author_id, target_id, content, state, published_at) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
+        "VALUES (%s, %s, %s, %s, %s, %s)",
         (guild_id, author, target, "test", state, published_at),
     )
     await db.commit()

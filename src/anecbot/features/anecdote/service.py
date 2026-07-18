@@ -1,6 +1,6 @@
 import logging
 
-import aiosqlite
+import psycopg
 
 from anecbot.features.anecdote.repository import (
     count_created_today,
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 async def daily_limit_status(
-    db: aiosqlite.Connection, guild_id: int, author_id: int
+    db: psycopg.AsyncConnection, guild_id: int, author_id: int
 ) -> tuple[bool, int]:
     """Return (reached, limit) for the author's daily submission limit."""
     guild = await Guild.get(db, guild_id)
@@ -27,7 +27,7 @@ async def daily_limit_status(
 
 
 async def create_anecdote(
-    db: aiosqlite.Connection,
+    db: psycopg.AsyncConnection,
     guild_id: int,
     author_id: int,
     target_id: int,
@@ -47,7 +47,7 @@ async def create_anecdote(
 
 
 async def get_pending_by_author(
-    db: aiosqlite.Connection, guild_id: int, author_id: int
+    db: psycopg.AsyncConnection, guild_id: int, author_id: int
 ) -> list[Anecdote]:
     """Return the author's PENDING anecdotes in the guild, most recent first."""
     anecdotes = await Anecdote.list(
@@ -57,7 +57,7 @@ async def get_pending_by_author(
 
 
 async def get_owned_pending_anecdote(
-    db: aiosqlite.Connection, anecdote_id: int, author_id: int
+    db: psycopg.AsyncConnection, anecdote_id: int, author_id: int
 ) -> Anecdote | None:
     """Return the anecdote if it exists, belongs to author_id, and is still PENDING."""
     anecdote = await Anecdote.get(db, anecdote_id)
@@ -71,26 +71,26 @@ async def get_owned_pending_anecdote(
 
 
 async def update_content(
-    db: aiosqlite.Connection, anecdote_id: int, content: str
+    db: psycopg.AsyncConnection, anecdote_id: int, content: str
 ) -> Anecdote:
     """Update a PENDING anecdote's content."""
     return await Anecdote.update(db, anecdote_id, content=content)
 
 
-async def delete_anecdote(db: aiosqlite.Connection, anecdote_id: int) -> bool:
+async def delete_anecdote(db: psycopg.AsyncConnection, anecdote_id: int) -> bool:
     """Delete an anecdote, return True if it existed."""
     return await Anecdote.delete(db, anecdote_id)
 
 
 async def player_has_anecdotes(
-    db: aiosqlite.Connection, guild_id: int, user_id: int
+    db: psycopg.AsyncConnection, guild_id: int, user_id: int
 ) -> bool:
     """Return whether the player has any anecdotes referencing them as author or target."""
     return await has_any_for_user(db, guild_id, user_id)
 
 
 async def discard_pending_anecdotes(
-    db: aiosqlite.Connection, guild_id: int, author_id: int
+    db: psycopg.AsyncConnection, guild_id: int, author_id: int
 ) -> int:
     """Delete the author's own PENDING anecdotes (e.g. when they leave), return count deleted."""
     return await delete_pending_by_author(db, guild_id, author_id)

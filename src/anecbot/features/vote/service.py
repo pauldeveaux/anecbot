@@ -1,4 +1,4 @@
-import aiosqlite
+import psycopg
 
 from anecbot.models.anecdote import Anecdote
 from anecbot.models.enums import AnecdoteState, VoteResult
@@ -7,7 +7,7 @@ from anecbot.models.vote import Vote
 
 
 async def record_vote(
-    db: aiosqlite.Connection, anecdote_id: int, voter_id: int, target_id: int
+    db: psycopg.AsyncConnection, anecdote_id: int, voter_id: int, target_id: int
 ) -> VoteResult:
     """Record a vote for the anecdote, auto-registering the voter as a player if needed."""
     anecdote = await Anecdote.get(db, anecdote_id)

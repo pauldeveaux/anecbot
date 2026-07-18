@@ -1,9 +1,8 @@
 import math
 import random
 from datetime import datetime
-from pathlib import Path
 
-import aiosqlite
+import psycopg
 import pytest
 import pytest_asyncio
 
@@ -14,25 +13,13 @@ from anecbot.features.selector.service import (
     select_pending_anecdote,
 )
 from anecbot.models.anecdote import Anecdote
-from anecbot.models.database import run_migrations
 from anecbot.models.guild import Guild
 from anecbot.models.player import Player
 
-MIGRATIONS_DIR = Path(__file__).resolve().parents[3] / "migrations"
 GUILD_ID = 100
 AUTHOR_ID = 1
 PROLIFIC_AUTHOR_ID = 2
 TARGET_ID = 3
-
-
-@pytest_asyncio.fixture
-async def db():
-    """Provide an in-memory database with migrations applied."""
-    conn = await aiosqlite.connect(":memory:")
-    await conn.execute("PRAGMA foreign_keys=ON")
-    await run_migrations(conn, MIGRATIONS_DIR)
-    yield conn
-    await conn.close()
 
 
 @pytest_asyncio.fixture
@@ -45,7 +32,7 @@ async def players(db):
 
 
 async def _pending(
-    db: aiosqlite.Connection, author_id: int, created_at: str
+    db: psycopg.AsyncConnection, author_id: int, created_at: str
 ) -> Anecdote:
     """Create a PENDING anecdote with a fixed created_at."""
     return await Anecdote.create(
@@ -59,7 +46,7 @@ async def _pending(
 
 
 async def _published(
-    db: aiosqlite.Connection, author_id: int, published_at: str
+    db: psycopg.AsyncConnection, author_id: int, published_at: str
 ) -> Anecdote:
     """Create a PUBLISHED anecdote with a fixed published_at."""
     created = await Anecdote.create(

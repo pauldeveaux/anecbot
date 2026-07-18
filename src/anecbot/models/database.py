@@ -1,8 +1,9 @@
 import logging
 import re
 from pathlib import Path
+from typing import LiteralString, cast
 
-import aiosqlite
+import psycopg
 
 logger = logging.getLogger(__name__)
 
@@ -13,24 +14,26 @@ def _parse_migration_number(filename: str) -> int | None:
     return int(match.group(1)) if match else None
 
 
-async def _ensure_schema_version_table(db: aiosqlite.Connection) -> None:
+async def _ensure_schema_version_table(db: psycopg.AsyncConnection) -> None:
     """Create the schema_version table if it doesn't exist, initialize to version 0."""
     await db.execute(
         "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)"
     )
-    row = list(await db.execute_fetchall("SELECT version FROM schema_version"))
-    if not row:
+    cursor = await db.execute("SELECT version FROM schema_version")
+    rows = await cursor.fetchall()
+    if not rows:
         await db.execute("INSERT INTO schema_version (version) VALUES (0)")
     await db.commit()
 
 
-async def _get_version(db: aiosqlite.Connection) -> int:
+async def _get_version(db: psycopg.AsyncConnection) -> int:
     """Return the current schema version number."""
-    rows = list(await db.execute_fetchall("SELECT version FROM schema_version"))
+    cursor = await db.execute("SELECT version FROM schema_version")
+    rows = await cursor.fetchall()
     return int(rows[0][0])
 
 
-async def run_migrations(db: aiosqlite.Connection, migrations_dir: Path) -> None:
+async def run_migrations(db: psycopg.AsyncConnection, migrations_dir: Path) -> None:
     """Apply pending SQL migrations from migrations_dir in order."""
     await _ensure_schema_version_table(db)
     current_version = await _get_version(db)
@@ -50,11 +53,10 @@ async def run_migrations(db: aiosqlite.Connection, migrations_dir: Path) -> None
         sql = migration_file.read_text()
         statements = [s.strip() for s in sql.split(";") if s.strip()]
         try:
-            await db.execute("BEGIN")
             for statement in statements:
-                await db.execute(statement)
+                await db.execute(cast(LiteralString, statement))
             await db.execute(
-                "UPDATE schema_version SET version = ?", (migration_number,)
+                "UPDATE schema_version SET version = %s", (migration_number,)
             )
         except BaseException:
             await db.rollback()
@@ -66,16 +68,13 @@ async def run_migrations(db: aiosqlite.Connection, migrations_dir: Path) -> None
     logger.info("Database at version %d", final_version)
 
 
-async def init_db(db_path: str, migrations_dir: Path) -> aiosqlite.Connection:
-    """Open a SQLite connection with WAL mode, foreign keys, and run pending migrations."""
-    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-    db = await aiosqlite.connect(db_path)
-    await db.execute("PRAGMA journal_mode=WAL")
-    await db.execute("PRAGMA foreign_keys=ON")
+async def init_db(database_url: str, migrations_dir: Path) -> psycopg.AsyncConnection:
+    """Open a PostgreSQL connection and run pending migrations."""
+    db = await psycopg.AsyncConnection.connect(database_url, autocommit=False)
     await run_migrations(db, migrations_dir)
     return db
 
 
-async def close_db(db: aiosqlite.Connection) -> None:
+async def close_db(db: psycopg.AsyncConnection) -> None:
     """Close the database connection."""
     await db.close()
