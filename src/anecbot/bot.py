@@ -8,6 +8,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 from anecbot.features.lifecycle.service import purge_guild
+from anecbot.features.publisher.service import restore_active_views
 from anecbot.features.scheduler.service import (
     check_leaderboard_resets,
     check_publications,
@@ -33,10 +34,11 @@ def create_bot(settings: Settings) -> Bot:
     intents.message_content = True
 
     bot = Bot(command_prefix="!", intents=intents)
+    views_restored = False
 
     @bot.event
     async def on_ready():
-        """Sync command tree globally and clear stale guild-specific commands."""
+        """Sync command tree, clear stale guild-specific commands, restore MCQ views once."""
         for guild in bot.guilds:
             bot.tree.clear_commands(guild=guild)
             await bot.tree.sync(guild=guild)
@@ -44,6 +46,11 @@ def create_bot(settings: Settings) -> Bot:
         logger.info(
             "Logged in as %s (guilds: %d, commands synced)", bot.user, len(bot.guilds)
         )
+
+        nonlocal views_restored
+        if not views_restored:
+            await restore_active_views(bot, bot.db)
+            views_restored = True
 
     @bot.event
     async def on_guild_remove(guild: discord.Guild):

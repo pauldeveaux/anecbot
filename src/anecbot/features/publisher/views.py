@@ -23,6 +23,7 @@ class McqView(discord.ui.View):
             for t in targets[:MAX_TARGETS]
         ]
         self.select = discord.ui.Select(
+            custom_id=f"mcq-vote:{anecdote_id}",
             placeholder="Devine à qui appartient cette anecdote...",
             options=options,
         )
