@@ -1,5 +1,6 @@
 import logging
 import logging.handlers
+import re
 from pathlib import Path
 
 import pytest
@@ -44,6 +45,19 @@ def test_scoped_formatter_without_color_has_no_ansi_codes():
     assert output == "INFO [BOT] - hello"
 
 
+def test_scoped_formatter_includes_timestamp_with_given_datefmt():
+    """A datefmt passed to the formatter produces a leading timestamp in that format."""
+    formatter = ScopedFormatter(
+        "%(asctime)s %(levelname)s [%(scope)s] - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        use_color=False,
+    )
+    output = formatter.format(_make_record())
+    assert re.match(
+        r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} INFO \[BOT\] - hello$", output
+    )
+
+
 def test_setup_logging_resolves_string_level():
     """A level name (as env vars provide) resolves to the matching logging constant."""
     setup_logging(level="DEBUG")
@@ -60,6 +74,14 @@ def test_setup_logging_without_log_file_has_only_console_handler():
     """No log_file means only the console handler is attached."""
     setup_logging()
     assert len(logging.getLogger().handlers) == 1
+
+
+def test_setup_logging_console_handler_includes_timestamp():
+    """The console handler set up by setup_logging() prefixes log lines with a timestamp."""
+    setup_logging()
+    handler = logging.getLogger().handlers[0]
+    output = handler.formatter.format(_make_record())  # type: ignore[union-attr]
+    assert re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} ", output)
 
 
 def test_setup_logging_with_log_file_creates_parent_dir_and_file_handler(tmp_path):
