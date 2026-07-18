@@ -7,6 +7,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
+from anecbot.features.lifecycle.service import purge_guild
 from anecbot.features.scheduler.service import (
     check_leaderboard_resets,
     check_publications,
@@ -43,6 +44,11 @@ def create_bot(settings: Settings) -> Bot:
         logger.info(
             "Logged in as %s (guilds: %d, commands synced)", bot.user, len(bot.guilds)
         )
+
+    @bot.event
+    async def on_guild_remove(guild: discord.Guild):
+        """Purge the guild's data once the bot is no longer a member."""
+        await purge_guild(bot.db, guild.id)
 
     @tasks.loop(minutes=1)
     async def batch_loop() -> None:

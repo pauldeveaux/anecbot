@@ -18,6 +18,18 @@ async def wipe_guild_data(db: aiosqlite.Connection, guild_id: int) -> None:
     logger.warning("All data wiped for guild %s", guild_id)
 
 
+async def purge_guild(db: aiosqlite.Connection, guild_id: int) -> None:
+    """Delete the guild's config row, cascading to all its related data.
+
+    Called when the bot leaves a guild (kick, or the server itself is deleted): a stale
+    channel_id or other config left behind would otherwise make the guild's row keep matching
+    the batch loop's "started" checks after a later reinvite, without a valid channel to publish
+    into.
+    """
+    await Guild.delete(db, guild_id)
+    logger.warning("Guild %s purged (bot removed from guild)", guild_id)
+
+
 async def start_game(
     bot: discord.Client, db: aiosqlite.Connection, guild_id: int
 ) -> None:
