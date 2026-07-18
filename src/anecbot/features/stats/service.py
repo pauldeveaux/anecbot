@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-import aiosqlite
+import psycopg
 
 from anecbot.models.anecdote import Anecdote
 from anecbot.models.enums import AnecdoteState
@@ -23,7 +23,7 @@ class GuildStats:
     players_total: int
 
 
-async def get_guild_stats(db: aiosqlite.Connection, guild_id: int) -> GuildStats:
+async def get_guild_stats(db: psycopg.AsyncConnection, guild_id: int) -> GuildStats:
     """Compute game statistics for a guild."""
     guild = await Guild.get(db, guild_id)
 

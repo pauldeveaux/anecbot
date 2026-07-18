@@ -1,26 +1,11 @@
-from pathlib import Path
-
-import aiosqlite
+import psycopg
 import pytest
-import pytest_asyncio
 
-from anecbot.models.database import run_migrations
 from anecbot.models.guild import Guild
 from anecbot.models.player import Player
 from anecbot.features.stats.service import get_guild_stats
 
-MIGRATIONS_DIR = Path(__file__).resolve().parents[3] / "migrations"
 GUILD_ID = 100
-
-
-@pytest_asyncio.fixture
-async def db():
-    """Provide an in-memory database with migrations applied."""
-    conn = await aiosqlite.connect(":memory:")
-    await conn.execute("PRAGMA foreign_keys=ON")
-    await run_migrations(conn, MIGRATIONS_DIR)
-    yield conn
-    await conn.close()
 
 
 @pytest.mark.asyncio
@@ -98,7 +83,7 @@ async def test_stats_isolated_by_guild(db):
 
 
 async def _add_player(
-    db: aiosqlite.Connection,
+    db: psycopg.AsyncConnection,
     guild_id: int,
     user_id: int,
     can_submit: int = 0,
@@ -111,7 +96,7 @@ async def _add_player(
 
 
 async def _add_anecdote(
-    db: aiosqlite.Connection,
+    db: psycopg.AsyncConnection,
     guild_id: int,
     author: int,
     target: int,
@@ -119,7 +104,7 @@ async def _add_anecdote(
 ):
     """Insert an anecdote row."""
     await db.execute(
-        "INSERT INTO anecdotes (guild_id, author_id, target_id, content, state) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO anecdotes (guild_id, author_id, target_id, content, state) VALUES (%s, %s, %s, %s, %s)",
         (guild_id, author, target, "test content", state),
     )
     await db.commit()

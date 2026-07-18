@@ -2,7 +2,7 @@ import logging
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-import aiosqlite
+import psycopg
 import discord
 
 from anecbot.features.leaderboard.service import (
@@ -52,7 +52,7 @@ def is_publication_due(
 
 
 async def check_publication_for_guild(
-    bot: discord.Client, db: aiosqlite.Connection, guild: Guild, now: datetime
+    bot: discord.Client, db: psycopg.AsyncConnection, guild: Guild, now: datetime
 ) -> bool:
     """Trigger publication for the guild if due. Returns whether it was triggered."""
     if not guild.started or guild.channel_id is None:
@@ -75,7 +75,7 @@ async def check_publication_for_guild(
 
 
 async def check_publications(
-    bot: discord.Client, db: aiosqlite.Connection, now: datetime
+    bot: discord.Client, db: psycopg.AsyncConnection, now: datetime
 ) -> int:
     """Check every started guild and trigger publication where due. Returns the count triggered."""
     guilds = await Guild.list(db, started=1)
@@ -90,7 +90,7 @@ async def check_publications(
 
 
 async def check_reveal_for_guild(
-    bot: discord.Client, db: aiosqlite.Connection, guild: Guild, now: datetime
+    bot: discord.Client, db: psycopg.AsyncConnection, guild: Guild, now: datetime
 ) -> int:
     """Reveal every due anecdote for the guild if it's active. Returns the count revealed."""
     if not guild.started or guild.channel_id is None:
@@ -100,7 +100,7 @@ async def check_reveal_for_guild(
 
 
 async def check_reveals(
-    bot: discord.Client, db: aiosqlite.Connection, now: datetime
+    bot: discord.Client, db: psycopg.AsyncConnection, now: datetime
 ) -> int:
     """Check every started guild and reveal anecdotes where due. Returns the total revealed."""
     guilds = await Guild.list(db, started=1)
@@ -167,7 +167,7 @@ def is_leaderboard_reset_due(
 
 
 async def check_leaderboard_reset_for_guild(
-    bot: discord.Client, db: aiosqlite.Connection, guild: Guild, now: datetime
+    bot: discord.Client, db: psycopg.AsyncConnection, guild: Guild, now: datetime
 ) -> bool:
     """Publish final standings and reset the leaderboard for the guild if due.
 
@@ -213,7 +213,7 @@ async def check_leaderboard_reset_for_guild(
 
 
 async def check_leaderboard_resets(
-    bot: discord.Client, db: aiosqlite.Connection, now: datetime
+    bot: discord.Client, db: psycopg.AsyncConnection, now: datetime
 ) -> int:
     """Check every started guild and reset the leaderboard where due. Returns the count triggered."""
     guilds = await Guild.list(db, started=1)

@@ -1,25 +1,10 @@
-from pathlib import Path
-
-import aiosqlite
 import pytest
+import psycopg
 import pytest_asyncio
 
 from anecbot.models.anecdote import Anecdote
-from anecbot.models.database import run_migrations
 from anecbot.models.guild import Guild
 from anecbot.models.player import Player
-
-MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations"
-
-
-@pytest_asyncio.fixture
-async def db():
-    """Provide an in-memory database with migrations applied."""
-    conn = await aiosqlite.connect(":memory:")
-    await conn.execute("PRAGMA foreign_keys=ON")
-    await run_migrations(conn, MIGRATIONS_DIR)
-    yield conn
-    await conn.close()
 
 
 @pytest_asyncio.fixture
@@ -111,7 +96,7 @@ async def test_delete_returns_false_when_missing(db, guild):
 @pytest.mark.asyncio
 async def test_foreign_key_constraint(db):
     """Creating player for nonexistent guild fails."""
-    with pytest.raises(aiosqlite.IntegrityError):
+    with pytest.raises(psycopg.IntegrityError):
         await Player.upsert(db, 999, 1)
 
 
@@ -137,5 +122,5 @@ async def test_delete_fails_when_referenced_by_anecdote(db, guild):
     await Player.upsert(db, 100, 2)
     await Anecdote.create(db, guild_id=100, author_id=1, target_id=2, content="x")
 
-    with pytest.raises(aiosqlite.IntegrityError):
+    with pytest.raises(psycopg.IntegrityError):
         await Player.delete(db, 100, 1)

@@ -1,8 +1,6 @@
 from datetime import datetime
-from pathlib import Path
 from typing import cast
 
-import aiosqlite
 import discord
 import pytest
 import pytest_asyncio
@@ -17,12 +15,10 @@ from anecbot.features.publisher.service import (
     send_empty_queue_warning,
 )
 from anecbot.models.anecdote import Anecdote
-from anecbot.models.database import run_migrations
 from anecbot.models.guild import Guild
 from anecbot.models.player import Player
 from anecbot.utils.text import with_blank_lines
 
-MIGRATIONS_DIR = Path(__file__).resolve().parents[3] / "migrations"
 GUILD_ID = 100
 CHANNEL_ID = 555
 AUTHOR_ID = 1
@@ -96,16 +92,6 @@ class _FakeBot:
     def add_view(self, view: discord.ui.View, *, message_id: int | None = None):
         """Record the view/message_id pair a persistent-view registration was called with."""
         self.added_views.append((view, message_id))
-
-
-@pytest_asyncio.fixture
-async def db():
-    """Provide an in-memory database with migrations applied."""
-    conn = await aiosqlite.connect(":memory:")
-    await conn.execute("PRAGMA foreign_keys=ON")
-    await run_migrations(conn, MIGRATIONS_DIR)
-    yield conn
-    await conn.close()
 
 
 @pytest_asyncio.fixture

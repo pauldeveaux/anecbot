@@ -1,3 +1,4 @@
+import asyncio
 import sys
 
 from discord import LoginFailure
@@ -6,6 +7,10 @@ from pydantic import ValidationError
 from anecbot.bot import create_bot
 from anecbot.utils.config import Settings
 from anecbot.utils.logging import setup_logging
+
+if sys.platform == "win32":
+    # psycopg's async mode can't use Windows' default ProactorEventLoop.
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 try:
     # pyright doesn't know BaseSettings fills required fields from the environment.
