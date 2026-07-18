@@ -1,7 +1,6 @@
 from typing import cast
 
 import discord
-import pytest
 
 from anecbot.models.player import Player
 from anecbot.utils.player import display_name
@@ -28,40 +27,24 @@ class _FakeGuild:
         return self._members.get(user_id)
 
 
-def test_display_name_prefers_alias():
-    """The player's alias always wins, even if a guild member is available."""
-    player = Player(guild_id=GUILD_ID, user_id=USER_ID, alias="Alice")
-    guild = _FakeGuild({USER_ID: _FakeMember("Discord Name")})
-
-    assert display_name(player, cast(discord.Guild, guild)) == "Alice"
-
-
-def test_display_name_falls_back_to_guild_member():
-    """Without an alias, the guild member's display name is used."""
-    player = Player(guild_id=GUILD_ID, user_id=USER_ID, alias=None)
+def test_display_name_uses_guild_member():
+    """When the user is a cached guild member, their display name is used."""
+    player = Player(guild_id=GUILD_ID, user_id=USER_ID)
     guild = _FakeGuild({USER_ID: _FakeMember("Discord Name")})
 
     assert display_name(player, cast(discord.Guild, guild)) == "Discord Name"
 
 
 def test_display_name_falls_back_to_user_id_when_no_guild():
-    """Without an alias and no guild, the raw user id is used."""
-    player = Player(guild_id=GUILD_ID, user_id=USER_ID, alias=None)
+    """Without a guild, the raw user id is used."""
+    player = Player(guild_id=GUILD_ID, user_id=USER_ID)
 
     assert display_name(player, None) == str(USER_ID)
 
 
 def test_display_name_falls_back_to_user_id_when_member_not_found():
-    """Without an alias, and the user isn't a cached member of the guild, falls back to id."""
-    player = Player(guild_id=GUILD_ID, user_id=USER_ID, alias=None)
+    """When the user isn't a cached member of the guild, falls back to id."""
+    player = Player(guild_id=GUILD_ID, user_id=USER_ID)
     guild = _FakeGuild({})
 
     assert display_name(player, cast(discord.Guild, guild)) == str(USER_ID)
-
-
-@pytest.mark.parametrize("alias", ["", None])
-def test_display_name_empty_alias_treated_as_missing(alias):
-    """An empty-string alias is treated the same as no alias at all."""
-    player = Player(guild_id=GUILD_ID, user_id=USER_ID, alias=alias)
-
-    assert display_name(player, None) == str(USER_ID)

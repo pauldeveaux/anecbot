@@ -12,7 +12,6 @@ from anecbot.features.anecdote.service import (
 from anecbot.features.player.service import get_member_guilds
 from anecbot.features.selector.service import compute_selection_probabilities
 from anecbot.models.anecdote import Anecdote
-from anecbot.models.player import Player
 from anecbot.shared.views.errors import notify_unexpected_error
 from anecbot.shared.views.guild_select import GuildSelectView
 from anecbot.shared.views.paginator import NavigablePagesView
@@ -112,12 +111,10 @@ class AnecdoteBrowserView(NavigablePagesView):
     def __init__(
         self,
         anecdotes: list[Anecdote],
-        target_aliases: dict[int, str | None],
         probabilities: dict[int, float],
     ):
         """Store the anecdotes and their display data, one page per anecdote."""
         self.anecdotes = anecdotes
-        self.target_aliases = target_aliases
         self.probabilities = probabilities
         super().__init__(timeout=180)
 
@@ -132,10 +129,8 @@ class AnecdoteBrowserView(NavigablePagesView):
         return self.anecdotes[self.page]
 
     def _target_field(self, anecdote: Anecdote) -> str:
-        """Return a clickable mention, prefixed with the alias if one is set."""
-        mention = f"<@{anecdote.target_id}>"
-        alias = self.target_aliases.get(anecdote.id)
-        return f"{alias} ({mention})" if alias else mention
+        """Return a clickable mention of the anecdote's target."""
+        return f"<@{anecdote.target_id}>"
 
     def build_embed(self) -> discord.Embed:
         """Build the embed for the current anecdote."""
@@ -213,16 +208,11 @@ async def _show_browser(
             await interaction.response.send_message(content, ephemeral=True)
         return
 
-    target_aliases: dict[int, str | None] = {}
-    for anecdote in anecdotes:
-        target = await Player.get(db, guild_id, anecdote.target_id)
-        target_aliases[anecdote.id] = target.alias if target else None
-
     # Probabilities are computed over the guild's whole PENDING queue (the draw isn't
     # restricted to this author's own anecdotes), then narrowed down to the ones shown here.
     probabilities = await compute_selection_probabilities(db, guild_id, utcnow())
 
-    view = AnecdoteBrowserView(anecdotes, target_aliases, probabilities)
+    view = AnecdoteBrowserView(anecdotes, probabilities)
     if edit:
         await interaction.response.edit_message(embed=view.build_embed(), view=view)
     else:

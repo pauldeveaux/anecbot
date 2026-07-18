@@ -64,15 +64,23 @@ class _FakeChannel:
         return _FakeMessage(message_id=len(self.sent_embeds) + 9000)
 
 
+class _FakeMember:
+    """Stand-in for discord.Member — only display_name is used."""
+
+    def __init__(self, name: str):
+        self.display_name = name
+
+
 class _FakeGuild:
     """Stand-in for discord.Guild — only get_member is used (via display_name)."""
 
-    def __init__(self, guild_id: int):
+    def __init__(self, guild_id: int, members: dict[int, _FakeMember] | None = None):
         self.id = guild_id
+        self._members = members or {}
 
-    def get_member(self, user_id: int) -> None:
-        """No cached members in tests — display_name falls back to alias/user id."""
-        return None
+    def get_member(self, user_id: int) -> "_FakeMember | None":
+        """Return the fake member matching the id, or None (falls back to user id)."""
+        return self._members.get(user_id)
 
 
 class _FakeBot:
@@ -109,9 +117,9 @@ async def players(db):
     await Guild.upsert(
         db, GUILD_ID, channel_id=CHANNEL_ID, reveal_interval_days=1, reveal_time="13:30"
     )
-    await Player.upsert(db, GUILD_ID, AUTHOR_ID, can_submit=1, alias="Auteur")
-    await Player.upsert(db, GUILD_ID, TARGET_ID, can_be_target=1, alias="Cible")
-    await Player.upsert(db, GUILD_ID, VOTER_ID, can_submit=1, alias="Votant")
+    await Player.upsert(db, GUILD_ID, AUTHOR_ID, can_submit=1)
+    await Player.upsert(db, GUILD_ID, TARGET_ID, can_be_target=1)
+    await Player.upsert(db, GUILD_ID, VOTER_ID, can_submit=1)
 
 
 async def _published_anecdote(
@@ -195,12 +203,20 @@ def test_build_reveal_embed_shows_votes_and_spoiler():
         Vote(anecdote_id=1, user_id=VOTER_ID, voted_for_id=TARGET_ID),
     ]
     players = {
-        AUTHOR_ID: Player(guild_id=GUILD_ID, user_id=AUTHOR_ID, alias="Auteur"),
-        TARGET_ID: Player(guild_id=GUILD_ID, user_id=TARGET_ID, alias="Cible"),
-        VOTER_ID: Player(guild_id=GUILD_ID, user_id=VOTER_ID, alias="Votant"),
+        AUTHOR_ID: Player(guild_id=GUILD_ID, user_id=AUTHOR_ID),
+        TARGET_ID: Player(guild_id=GUILD_ID, user_id=TARGET_ID),
+        VOTER_ID: Player(guild_id=GUILD_ID, user_id=VOTER_ID),
     }
+    guild = _FakeGuild(
+        GUILD_ID,
+        {
+            AUTHOR_ID: _FakeMember("Auteur"),
+            TARGET_ID: _FakeMember("Cible"),
+            VOTER_ID: _FakeMember("Votant"),
+        },
+    )
 
-    embed = build_reveal_embed(anecdote, votes, players, None)
+    embed = build_reveal_embed(anecdote, votes, players, cast(discord.Guild, guild))
 
     content_field = embed.fields[0]
     assert content_field.value == with_blank_lines("Un truc drôle")
@@ -231,16 +247,17 @@ def test_build_reveal_embed_falls_back_to_count_when_votes_list_too_long():
     anecdote = Anecdote(
         id=1, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
     )
-    players = {
-        i: Player(guild_id=GUILD_ID, user_id=i, alias=f"Joueur avec un nom long {i}")
-        for i in range(100)
-    }
+    players = {i: Player(guild_id=GUILD_ID, user_id=i) for i in range(100)}
+    guild = _FakeGuild(
+        GUILD_ID,
+        {i: _FakeMember(f"Joueur avec un nom long {i}") for i in range(100)},
+    )
     votes = [
         Vote(anecdote_id=1, user_id=i, voted_for_id=TARGET_ID if i % 2 == 0 else i)
         for i in range(100)
     ]
 
-    embed = build_reveal_embed(anecdote, votes, players, None)
+    embed = build_reveal_embed(anecdote, votes, players, cast(discord.Guild, guild))
 
     votes_field = next(f for f in embed.fields if f.name == "🗳️ Votes")
     assert votes_field.value == "✅ 50/100 ont deviné juste"

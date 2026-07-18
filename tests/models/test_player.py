@@ -44,7 +44,6 @@ async def test_upsert_creates_with_defaults(db, guild):
     assert result.user_id == 1
     assert result.can_submit == 0
     assert result.can_be_target == 0
-    assert result.alias is None
     assert result.suspended == 0
     assert result.registered_at != ""
 
@@ -53,10 +52,9 @@ async def test_upsert_creates_with_defaults(db, guild):
 async def test_upsert_updates_flags(db, guild):
     """Player.upsert updates only the provided fields."""
     await Player.upsert(db, 100, 1)
-    result = await Player.upsert(db, 100, 1, can_submit=1, alias="Bob")
+    result = await Player.upsert(db, 100, 1, can_submit=1)
     assert result.can_submit == 1
     assert result.can_be_target == 0
-    assert result.alias == "Bob"
 
 
 @pytest.mark.asyncio
@@ -87,13 +85,13 @@ async def test_same_user_multiple_guilds(db):
     """Same user_id can exist in multiple guilds independently."""
     await Guild.upsert(db, 100)
     await Guild.upsert(db, 200)
-    await Player.upsert(db, 100, 1, alias="Alice")
-    await Player.upsert(db, 200, 1, alias="Bob")
+    await Player.upsert(db, 100, 1, can_submit=1)
+    await Player.upsert(db, 200, 1, can_be_target=1)
 
     p1 = await Player.get(db, 100, 1)
     p2 = await Player.get(db, 200, 1)
-    assert p1 is not None and p1.alias == "Alice"
-    assert p2 is not None and p2.alias == "Bob"
+    assert p1 is not None and p1.can_submit == 1 and p1.can_be_target == 0
+    assert p2 is not None and p2.can_be_target == 1 and p2.can_submit == 0
 
 
 @pytest.mark.asyncio

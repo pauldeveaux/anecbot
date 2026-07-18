@@ -70,7 +70,7 @@ class _FakeGuild:
         self.id = guild_id
 
     def get_member(self, user_id: int) -> None:
-        """No cached members in tests — display_name falls back to alias/user id."""
+        """No cached members in tests — display_name falls back to the user id."""
         return None
 
 
