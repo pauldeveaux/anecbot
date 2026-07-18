@@ -1,41 +1,41 @@
-import aiosqlite
+import psycopg
 
 from anecbot.models.enums import AnecdoteState
 
 
 async def count_created_today(
-    db: aiosqlite.Connection, guild_id: int, author_id: int
+    db: psycopg.AsyncConnection, guild_id: int, author_id: int
 ) -> int:
     """Count anecdotes created today (UTC) by the author in the guild."""
-    async with db.execute(
+    cursor = await db.execute(
         "SELECT COUNT(*) FROM anecdotes "
-        "WHERE guild_id = ? AND author_id = ? AND date(created_at) = date('now')",
+        "WHERE guild_id = %s AND author_id = %s AND created_at::date = CURRENT_DATE",
         (guild_id, author_id),
-    ) as cursor:
-        row = await cursor.fetchone()
+    )
+    row = await cursor.fetchone()
     assert row is not None
     return row[0]
 
 
 async def has_any_for_user(
-    db: aiosqlite.Connection, guild_id: int, user_id: int
+    db: psycopg.AsyncConnection, guild_id: int, user_id: int
 ) -> bool:
     """Return whether the user has any anecdotes as author or target in the guild."""
-    async with db.execute(
-        "SELECT 1 FROM anecdotes WHERE guild_id = ? AND (author_id = ? OR target_id = ?) "
+    cursor = await db.execute(
+        "SELECT 1 FROM anecdotes WHERE guild_id = %s AND (author_id = %s OR target_id = %s) "
         "LIMIT 1",
         (guild_id, user_id, user_id),
-    ) as cursor:
-        row = await cursor.fetchone()
+    )
+    row = await cursor.fetchone()
     return row is not None
 
 
 async def delete_pending_by_author(
-    db: aiosqlite.Connection, guild_id: int, author_id: int
+    db: psycopg.AsyncConnection, guild_id: int, author_id: int
 ) -> int:
     """Delete the author's own PENDING anecdotes in the guild, return the count deleted."""
     cursor = await db.execute(
-        "DELETE FROM anecdotes WHERE guild_id = ? AND author_id = ? AND state = ?",
+        "DELETE FROM anecdotes WHERE guild_id = %s AND author_id = %s AND state = %s",
         (guild_id, author_id, AnecdoteState.PENDING),
     )
     await db.commit()

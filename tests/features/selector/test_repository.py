@@ -1,6 +1,4 @@
-from pathlib import Path
-
-import aiosqlite
+import psycopg
 import pytest
 import pytest_asyncio
 
@@ -10,26 +8,14 @@ from anecbot.features.selector.repository import (
     get_author_publish_distances_bulk,
 )
 from anecbot.models.anecdote import Anecdote
-from anecbot.models.database import run_migrations
 from anecbot.models.guild import Guild
 from anecbot.models.player import Player
 
-MIGRATIONS_DIR = Path(__file__).resolve().parents[3] / "migrations"
 GUILD_ID = 100
 OTHER_GUILD_ID = 200
 AUTHOR_ID = 1
 OTHER_AUTHOR_ID = 2
 TARGET_ID = 3
-
-
-@pytest_asyncio.fixture
-async def db():
-    """Provide an in-memory database with migrations applied."""
-    conn = await aiosqlite.connect(":memory:")
-    await conn.execute("PRAGMA foreign_keys=ON")
-    await run_migrations(conn, MIGRATIONS_DIR)
-    yield conn
-    await conn.close()
 
 
 @pytest_asyncio.fixture
@@ -44,7 +30,7 @@ async def players(db):
 
 
 async def _anecdote(
-    db: aiosqlite.Connection,
+    db: psycopg.AsyncConnection,
     guild_id: int,
     author_id: int,
     state: str = "PENDING",

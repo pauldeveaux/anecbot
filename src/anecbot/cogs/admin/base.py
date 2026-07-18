@@ -5,7 +5,7 @@ from discord import app_commands
 from discord.ext import commands
 
 if TYPE_CHECKING:
-    import aiosqlite
+    import psycopg
 
 from anecbot.bot import Bot
 
@@ -24,6 +24,6 @@ class AdminCog(commands.Cog):
         return True
 
 
-def get_db(interaction: discord.Interaction) -> "aiosqlite.Connection":
+def get_db(interaction: discord.Interaction) -> "psycopg.AsyncConnection":
     """Get the database connection from the bot instance."""
     return interaction.client.db  # type: ignore[attr-defined, return-value]

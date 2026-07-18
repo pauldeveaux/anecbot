@@ -1,1 +1,0 @@
-ALTER TABLE anecdotes ADD COLUMN points_awarded INTEGER NOT NULL DEFAULT 0;

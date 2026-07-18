@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import cast
 from zoneinfo import ZoneInfo
 
-import aiosqlite
+import psycopg
 import discord
 
 from anecbot.features.player.service import get_active_targets
@@ -41,7 +41,7 @@ def build_anecdote_embed(
 
 
 async def publish_next_anecdote(
-    bot: discord.Client, db: aiosqlite.Connection, guild_id: int
+    bot: discord.Client, db: psycopg.AsyncConnection, guild_id: int
 ) -> Anecdote | None:
     """Publish a weighted-random PENDING anecdote for the guild and transition it to RUNNING.
 
@@ -69,7 +69,7 @@ async def publish_next_anecdote(
 
 
 async def send_empty_queue_warning(
-    bot: discord.Client, db: aiosqlite.Connection, guild: Guild
+    bot: discord.Client, db: psycopg.AsyncConnection, guild: Guild
 ) -> None:
     """Send a one-time warning that there's nothing to publish, unless already sent."""
     if guild.queue_empty_warned:
@@ -83,7 +83,7 @@ async def send_empty_queue_warning(
 
 
 async def finish_publishing(
-    bot: discord.Client, db: aiosqlite.Connection, guild: Guild, anecdote: Anecdote
+    bot: discord.Client, db: psycopg.AsyncConnection, guild: Guild, anecdote: Anecdote
 ) -> Anecdote:
     """Open voting on an already-RUNNING anecdote and transition it to PUBLISHED."""
     discord_guild = bot.get_guild(guild.guild_id)
@@ -119,7 +119,7 @@ async def finish_publishing(
 
 
 async def publish_and_open_voting(
-    bot: discord.Client, db: aiosqlite.Connection, guild_id: int
+    bot: discord.Client, db: psycopg.AsyncConnection, guild_id: int
 ) -> Anecdote | None:
     """Publish the next anecdote with its MCQ, or warn once if the queue is empty."""
     guild = await Guild.get(db, guild_id)
@@ -134,7 +134,7 @@ async def publish_and_open_voting(
 
 
 async def recover_stuck_publications(
-    bot: discord.Client, db: aiosqlite.Connection, guild_id: int
+    bot: discord.Client, db: psycopg.AsyncConnection, guild_id: int
 ) -> int:
     """Recover anecdotes stuck in RUNNING from a previous crash. Returns the count recovered."""
     guild = await Guild.get(db, guild_id)
@@ -151,7 +151,7 @@ async def recover_stuck_publications(
 
 
 async def refresh_published_reveal_dates(
-    bot: discord.Client, db: aiosqlite.Connection, guild_id: int
+    bot: discord.Client, db: psycopg.AsyncConnection, guild_id: int
 ) -> None:
     """Update the displayed reveal date on every PUBLISHED anecdote's message."""
     guild = await Guild.get(db, guild_id)
@@ -180,7 +180,9 @@ async def refresh_published_reveal_dates(
         await message.edit(embed=embed)
 
 
-async def restore_active_views(bot: discord.Client, db: aiosqlite.Connection) -> None:
+async def restore_active_views(
+    bot: discord.Client, db: psycopg.AsyncConnection
+) -> None:
     """Re-register a persistent MCQ view for every still-open anecdote, once on startup.
 
     McqView instances only live in memory for the process that created them, so a restart

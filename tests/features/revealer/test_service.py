@@ -1,9 +1,8 @@
 from datetime import datetime
-from pathlib import Path
 from typing import cast
 
-import aiosqlite
 import discord
+import psycopg
 import pytest
 import pytest_asyncio
 
@@ -14,14 +13,12 @@ from anecbot.features.revealer.service import (
     reveal_due_anecdotes,
 )
 from anecbot.models.anecdote import Anecdote
-from anecbot.models.database import run_migrations
 from anecbot.models.guild import Guild
 from anecbot.models.leaderboard import LeaderboardEntry
 from anecbot.models.player import Player
 from anecbot.models.vote import Vote
 from anecbot.utils.text import with_blank_lines
 
-MIGRATIONS_DIR = Path(__file__).resolve().parents[3] / "migrations"
 GUILD_ID = 100
 CHANNEL_ID = 555
 AUTHOR_ID = 1
@@ -102,16 +99,6 @@ class _FakeBot:
 
 
 @pytest_asyncio.fixture
-async def db():
-    """Provide an in-memory database with migrations applied."""
-    conn = await aiosqlite.connect(":memory:")
-    await conn.execute("PRAGMA foreign_keys=ON")
-    await run_migrations(conn, MIGRATIONS_DIR)
-    yield conn
-    await conn.close()
-
-
-@pytest_asyncio.fixture
 async def players(db):
     """Create a guild (with a configured channel) plus author/target/voter players."""
     await Guild.upsert(
@@ -123,7 +110,7 @@ async def players(db):
 
 
 async def _published_anecdote(
-    db: aiosqlite.Connection, published_at: str, message_id: int = 999
+    db: psycopg.AsyncConnection, published_at: str, message_id: int = 999
 ) -> Anecdote:
     """Insert a PUBLISHED anecdote with a fixed published_at and message id."""
     created = await Anecdote.create(

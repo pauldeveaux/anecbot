@@ -2,7 +2,7 @@ import math
 import random
 from datetime import datetime
 
-import aiosqlite
+import psycopg
 
 from anecbot.features.selector.repository import (
     count_total_published,
@@ -27,7 +27,7 @@ def compute_author_weight(distances: list[int], tau: float) -> float:
 
 
 async def _pending_weights(
-    db: aiosqlite.Connection, guild_id: int, anecdotes: list[Anecdote], now: datetime
+    db: psycopg.AsyncConnection, guild_id: int, anecdotes: list[Anecdote], now: datetime
 ) -> dict[int, float]:
     """Return {anecdote_id: weight} for the given (already-fetched) PENDING anecdotes."""
     total_published = await count_total_published(db, guild_id)
@@ -49,7 +49,7 @@ async def _pending_weights(
 
 
 async def select_pending_anecdote(
-    db: aiosqlite.Connection,
+    db: psycopg.AsyncConnection,
     guild_id: int,
     now: datetime,
     rng: random.Random | None = None,
@@ -67,7 +67,7 @@ async def select_pending_anecdote(
 
 
 async def compute_selection_probabilities(
-    db: aiosqlite.Connection, guild_id: int, now: datetime
+    db: psycopg.AsyncConnection, guild_id: int, now: datetime
 ) -> dict[int, float]:
     """Return each PENDING anecdote's normalized selection probability (weight / total weight)."""
     anecdotes = await Anecdote.list(db, guild_id=guild_id, state=AnecdoteState.PENDING)

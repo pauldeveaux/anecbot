@@ -1,10 +1,7 @@
-from pathlib import Path
 from typing import cast
 
-import aiosqlite
 import discord
 import pytest
-import pytest_asyncio
 
 from anecbot.features.player.service import (
     MAX_TARGETS,
@@ -15,11 +12,9 @@ from anecbot.features.player.service import (
     is_active_submitter,
 )
 from anecbot.models.anecdote import Anecdote
-from anecbot.models.database import run_migrations
 from anecbot.models.guild import Guild
 from anecbot.models.player import Player
 
-MIGRATIONS_DIR = Path(__file__).resolve().parents[3] / "migrations"
 GUILD_ID = 100
 OTHER_GUILD_ID = 200
 
@@ -42,16 +37,6 @@ class _FakeBot:
 
     def __init__(self, guilds: list[_FakeGuild]):
         self.guilds = guilds
-
-
-@pytest_asyncio.fixture
-async def db():
-    """Provide an in-memory database with migrations applied."""
-    conn = await aiosqlite.connect(":memory:")
-    await conn.execute("PRAGMA foreign_keys=ON")
-    await run_migrations(conn, MIGRATIONS_DIR)
-    yield conn
-    await conn.close()
 
 
 @pytest.mark.asyncio

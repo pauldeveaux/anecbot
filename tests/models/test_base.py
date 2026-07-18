@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import ClassVar
 
-import aiosqlite
+import psycopg
 import pytest
 import pytest_asyncio
 
@@ -33,12 +33,11 @@ CREATE TABLE items (
 
 
 @pytest_asyncio.fixture
-async def db():
-    """Provide an in-memory database with items table."""
-    conn = await aiosqlite.connect(":memory:")
-    await conn.executescript(CREATE_ITEMS_SQL)
-    yield conn
-    await conn.close()
+async def db(db_connection: psycopg.AsyncConnection) -> psycopg.AsyncConnection:
+    """Provide an isolated-schema connection with the items table."""
+    await db_connection.execute(CREATE_ITEMS_SQL)
+    await db_connection.commit()
+    return db_connection
 
 
 @pytest.mark.asyncio

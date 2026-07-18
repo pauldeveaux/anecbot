@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import cast
 from zoneinfo import ZoneInfo
 
-import aiosqlite
+import psycopg
 import discord
 
 from anecbot.features.leaderboard.service import award_points, publish_leaderboard
@@ -23,7 +23,7 @@ MAX_VOTES_FIELD_LENGTH = 1000  # stay under Discord's 1024-char embed field valu
 
 
 async def get_due_reveals(
-    db: aiosqlite.Connection, guild_id: int, now: datetime
+    db: psycopg.AsyncConnection, guild_id: int, now: datetime
 ) -> list[Anecdote]:
     """Return PUBLISHED anecdotes past their reveal time, plus any REVEALING (mid-crash-recovery)."""
     guild = await Guild.get(db, guild_id)
@@ -102,7 +102,7 @@ def build_reveal_embed(
 
 
 async def reveal_anecdote(
-    bot: discord.Client, db: aiosqlite.Connection, anecdote: Anecdote
+    bot: discord.Client, db: psycopg.AsyncConnection, anecdote: Anecdote
 ) -> Anecdote:
     """Close voting, award points, reply with the reveal, mark REVEALED.
 
@@ -142,7 +142,7 @@ async def reveal_anecdote(
 
 
 async def reveal_due_anecdotes(
-    bot: discord.Client, db: aiosqlite.Connection, guild_id: int, now: datetime
+    bot: discord.Client, db: psycopg.AsyncConnection, guild_id: int, now: datetime
 ) -> list[Anecdote]:
     """Reveal every due anecdote in the guild, including any left REVEALING from a crash."""
     due = await get_due_reveals(db, guild_id, now)
