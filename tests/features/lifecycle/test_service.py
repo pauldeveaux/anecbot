@@ -4,7 +4,7 @@ import aiosqlite
 import pytest
 import pytest_asyncio
 
-from anecbot.features.lifecycle.service import wipe_guild_data
+from anecbot.features.lifecycle.service import purge_guild, wipe_guild_data
 from anecbot.models.anecdote import Anecdote
 from anecbot.models.database import run_migrations
 from anecbot.models.enums import AnecdoteState
@@ -69,5 +69,45 @@ async def test_wipe_guild_data_does_not_touch_other_guilds(db):
 
     await wipe_guild_data(db, GUILD_ID)
 
+    other_players = await Player.list(db, guild_id=OTHER_GUILD_ID)
+    assert len(other_players) == 1
+
+
+@pytest.mark.asyncio
+async def test_purge_guild_deletes_the_guild_row_and_everything_linked_to_it(db):
+    """Deleting the guild row cascades to votes, anecdotes, leaderboard entries, and players."""
+    await Guild.upsert(db, GUILD_ID, started=1, started_at="2026-01-01T00:00:00")
+    await Player.upsert(db, GUILD_ID, AUTHOR_ID, can_submit=1)
+    await Player.upsert(db, GUILD_ID, TARGET_ID, can_be_target=1)
+    anecdote = await Anecdote.create(
+        db,
+        guild_id=GUILD_ID,
+        author_id=AUTHOR_ID,
+        target_id=TARGET_ID,
+        content="anecdote",
+        state=AnecdoteState.PUBLISHED,
+    )
+    await Vote.upsert(db, anecdote.id, VOTER_ID, voted_for_id=TARGET_ID)
+    await LeaderboardEntry.upsert(db, GUILD_ID, AUTHOR_ID, points=5)
+
+    await purge_guild(db, GUILD_ID)
+
+    assert await Guild.get(db, GUILD_ID) is None
+    assert await Anecdote.list(db, guild_id=GUILD_ID) == []
+    assert await Player.list(db, guild_id=GUILD_ID) == []
+    assert await LeaderboardEntry.list(db, guild_id=GUILD_ID) == []
+    assert await Vote.list(db, anecdote_id=anecdote.id) == []
+
+
+@pytest.mark.asyncio
+async def test_purge_guild_does_not_touch_other_guilds(db):
+    """Only the target guild's row and data are deleted."""
+    await Guild.upsert(db, GUILD_ID)
+    await Guild.upsert(db, OTHER_GUILD_ID)
+    await Player.upsert(db, OTHER_GUILD_ID, AUTHOR_ID, can_submit=1)
+
+    await purge_guild(db, GUILD_ID)
+
+    assert await Guild.get(db, OTHER_GUILD_ID) is not None
     other_players = await Player.list(db, guild_id=OTHER_GUILD_ID)
     assert len(other_players) == 1
