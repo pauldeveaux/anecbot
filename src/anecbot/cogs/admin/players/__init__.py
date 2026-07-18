@@ -3,7 +3,6 @@ from discord import app_commands
 
 from anecbot.cogs.admin.base import AdminCog
 from anecbot.cogs.admin.players.handlers import (
-    alias,
     ban,
     players_list,
     register,
@@ -104,23 +103,6 @@ class PlayersCog(AdminCog):
     ):
         """Admin-unregister a user."""
         await unregister.handle(interaction, user, role.value if role else None)
-
-    @app_commands.command(
-        name="alias",
-        description="Définir un alias d'affichage pour un joueur",
-    )
-    @app_commands.describe(
-        user="Le joueur",
-        name="L'alias à utiliser dans le QCM",
-    )
-    async def alias_cmd(
-        self,
-        interaction: discord.Interaction,
-        user: discord.Member,
-        name: str,
-    ):
-        """Set a display alias."""
-        await alias.handle(interaction, user, name)
 
     @app_commands.command(
         name="suspend",
