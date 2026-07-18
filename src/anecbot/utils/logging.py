@@ -31,9 +31,11 @@ RESET = "\033[0m"
 class ScopedFormatter(logging.Formatter):
     """Formatter that adds a short scope tag derived from logger name."""
 
-    def __init__(self, fmt: str, use_color: bool = True) -> None:
+    def __init__(
+        self, fmt: str, datefmt: str | None = None, use_color: bool = True
+    ) -> None:
         """Initialize the formatter, optionally disabling ANSI color codes."""
-        super().__init__(fmt)
+        super().__init__(fmt, datefmt)
         self.use_color = use_color
 
     def format(self, record: logging.LogRecord) -> str:
@@ -66,10 +68,11 @@ def _resolve_level(level: int | str) -> int:
 def setup_logging(level: int | str = logging.INFO, log_file: str | None = None) -> None:
     """Configure logging with a scoped console handler and an optional rotating file handler."""
     resolved_level = _resolve_level(level)
-    fmt = "%(levelname)s [%(scope)s] - %(message)s"
+    fmt = "%(asctime)s %(levelname)s [%(scope)s] - %(message)s"
+    datefmt = "%Y-%m-%d %H:%M:%S"
 
     console_handler = logging.StreamHandler()
-    console_handler.setFormatter(ScopedFormatter(fmt))
+    console_handler.setFormatter(ScopedFormatter(fmt, datefmt))
     handlers: list[logging.Handler] = [console_handler]
 
     if log_file:
@@ -80,7 +83,7 @@ def setup_logging(level: int | str = logging.INFO, log_file: str | None = None) 
             backupCount=LOG_FILE_BACKUP_COUNT,
             encoding="utf-8",
         )
-        file_handler.setFormatter(ScopedFormatter(fmt, use_color=False))
+        file_handler.setFormatter(ScopedFormatter(fmt, datefmt, use_color=False))
         handlers.append(file_handler)
 
     logging.basicConfig(level=resolved_level, handlers=handlers, force=True)
