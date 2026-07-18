@@ -23,7 +23,6 @@ ADMIN_GUIDE = (
     "- `/register-targets [role]` — ouvrir les inscriptions pour être cible\n"
     "- `/register <user> <role>` — inscrire un joueur directement\n"
     "- `/unregister <user> [role]` — désinscrire un joueur\n"
-    "- `/alias <user> <nom>` — définir un alias d'affichage\n"
     "- `/suspend <user>` / `/unsuspend <user>` — mettre en pause (exclu des publications et du QCM)\n"
     "- `/ban <user> [role]` / `/unban <user> [role]` — bannir / débannir\n"
     "- `/players [filtre]` — lister les joueurs (rédacteurs/cibles/bannis)\n\n"

@@ -33,6 +33,16 @@ async def handle(interaction: discord.Interaction, tz: GuildTimezone):
     """Set the guild's timezone."""
     assert interaction.guild_id is not None
     db = get_db(interaction)
+    guild = await Guild.get(db, interaction.guild_id)
+
+    if guild is not None and guild.started:
+        await interaction.response.send_message(
+            "❌ Impossible de changer le fuseau horaire pendant que le jeu est en cours. "
+            "Utilisez `/stop` d'abord.",
+            ephemeral=True,
+        )
+        return
+
     await Guild.upsert(db, interaction.guild_id, timezone=tz)
     logger.info("Timezone set to %s for guild %s", tz, interaction.guild_id)
     await refresh_published_reveal_dates(interaction.client, db, interaction.guild_id)

@@ -63,6 +63,24 @@ class _FakeBot:
         return None
 
 
+class _FakeMember:
+    """Stand-in for discord.Member — only display_name is used."""
+
+    def __init__(self, name: str):
+        self.display_name = name
+
+
+class _FakeGuild:
+    """Stand-in for discord.Guild — only get_member is used (via display_name)."""
+
+    def __init__(self, members: dict[int, _FakeMember]):
+        self._members = members
+
+    def get_member(self, user_id: int):
+        """Return the fake member matching the id, or None."""
+        return self._members.get(user_id)
+
+
 @pytest_asyncio.fixture
 async def db():
     """Provide an in-memory database with migrations applied."""
@@ -129,11 +147,12 @@ def test_build_leaderboard_embed_ranks_by_points_descending():
         LeaderboardEntry(guild_id=GUILD_ID, user_id=2, points=10),
     ]
     players = {
-        1: Player(guild_id=GUILD_ID, user_id=1, alias="Alice"),
-        2: Player(guild_id=GUILD_ID, user_id=2, alias="Bob"),
+        1: Player(guild_id=GUILD_ID, user_id=1),
+        2: Player(guild_id=GUILD_ID, user_id=2),
     }
+    guild = _FakeGuild({1: _FakeMember("Alice"), 2: _FakeMember("Bob")})
 
-    embed = build_leaderboard_embed(entries, players, None)
+    embed = build_leaderboard_embed(entries, players, cast(discord.Guild, guild))
 
     assert embed.description is not None
     lines = embed.description.split("\n")
@@ -148,11 +167,14 @@ def test_build_leaderboard_embed_caps_to_top_n():
         for i in range(MAX_LEADERBOARD_ENTRIES + 5)
     ]
     players = {
-        i: Player(guild_id=GUILD_ID, user_id=i, alias=f"Joueur{i}")
+        i: Player(guild_id=GUILD_ID, user_id=i)
         for i in range(MAX_LEADERBOARD_ENTRIES + 5)
     }
+    guild = _FakeGuild(
+        {i: _FakeMember(f"Joueur{i}") for i in range(MAX_LEADERBOARD_ENTRIES + 5)}
+    )
 
-    embed = build_leaderboard_embed(entries, players, None)
+    embed = build_leaderboard_embed(entries, players, cast(discord.Guild, guild))
 
     assert embed.description is not None
     lines = embed.description.split("\n")
@@ -171,7 +193,7 @@ def test_build_leaderboard_embed_empty():
 async def test_publish_leaderboard_sends_embed(db):
     """The leaderboard embed is sent to the guild's configured channel."""
     await Guild.upsert(db, GUILD_ID, channel_id=CHANNEL_ID)
-    await Player.upsert(db, GUILD_ID, AUTHOR_ID, alias="Auteur")
+    await Player.upsert(db, GUILD_ID, AUTHOR_ID)
     await LeaderboardEntry.upsert(db, GUILD_ID, AUTHOR_ID, points=3)
     channel = _FakeChannel()
     bot = _FakeBot({CHANNEL_ID: channel})
