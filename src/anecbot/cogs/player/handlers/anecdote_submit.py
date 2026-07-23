@@ -1,5 +1,6 @@
+import asyncio
 import logging
-from typing import Any
+from typing import Any, cast
 
 import discord
 
@@ -9,6 +10,7 @@ from anecbot.features.player.service import (
     get_member_guilds,
     is_active_submitter,
 )
+from anecbot.models.anecdote_media import AnecdoteMedia
 from anecbot.models.player import Player
 from anecbot.shared.views.errors import notify_unexpected_error
 from anecbot.shared.views.guild_select import GuildSelectView
@@ -19,6 +21,180 @@ logger = logging.getLogger(__name__)
 
 MIN_CHOICES = 1
 MAX_CHOICES = 10
+MAX_MEDIA = 1
+_MEDIA_TIMEOUT_SECONDS = 180
+
+
+def _is_image_attachment(attachment: discord.Attachment) -> bool:
+    """Return whether an attachment looks like an image, by content type or extension."""
+    if attachment.content_type and attachment.content_type.startswith("image/"):
+        return True
+    return attachment.filename.lower().endswith((".png", ".jpg", ".jpeg", ".webp"))
+
+
+class _MediaCollectView(discord.ui.View):
+    """Attached while collecting media — its button is the only way to stop collecting."""
+
+    def __init__(self):
+        """Never auto-time-out — the collection loop itself handles message-inactivity timeout."""
+        super().__init__(timeout=None)
+        self.stopped = asyncio.Event()
+
+    @discord.ui.button(label="✅ Terminé", style=discord.ButtonStyle.success)
+    async def finish(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Signal the collection loop to stop; it shows the confirm step next."""
+        self.stopped.set()
+        await interaction.response.defer()
+
+
+async def _run_media_collection(
+    interaction: discord.Interaction,
+) -> list[AnecdoteMedia]:
+    """Show the collection prompt and gather one image attachment from a follow-up DM message.
+
+    Modals can't carry file uploads, so this runs as a message wait in the same DM channel after
+    the user opted in. Stops once the one allowed image is collected, the Terminé button is
+    clicked, or a period of inactivity passes — never blocks the submission either way. The
+    Terminé button is re-attached to the "not understood" retry reply too, so it stays visible
+    without scrolling back up.
+    """
+    collect_view = _MediaCollectView()
+    await interaction.response.edit_message(
+        content=(
+            "📎 Envoie une image en pièce jointe.\n"
+            "Clique sur ✅ Terminé si tu ne veux pas en ajouter."
+        ),
+        embed=None,
+        view=collect_view,
+    )
+    channel = interaction.channel
+    assert channel is not None
+    sendable = cast("discord.abc.Messageable", channel)
+    media: list[AnecdoteMedia] = []
+
+    def check(message: discord.Message) -> bool:
+        """Match only messages from the submitter, in this same DM channel."""
+        return (
+            message.channel.id == channel.id
+            and message.author.id == interaction.user.id
+        )
+
+    stop_wait = asyncio.ensure_future(collect_view.stopped.wait())
+    while len(media) < MAX_MEDIA:
+        if collect_view.stopped.is_set():
+            break
+
+        message_wait = asyncio.ensure_future(
+            interaction.client.wait_for("message", check=check)
+        )
+        done, _pending = await asyncio.wait(
+            {message_wait, stop_wait},
+            timeout=_MEDIA_TIMEOUT_SECONDS,
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if message_wait not in done:
+            message_wait.cancel()
+            break
+        message = message_wait.result()
+
+        added = 0
+        for index, attachment in enumerate(message.attachments):
+            if len(media) >= MAX_MEDIA:
+                break
+            if not _is_image_attachment(attachment):
+                continue
+            media.append(
+                AnecdoteMedia(
+                    media_url=attachment.url,
+                    dm_channel_id=message.channel.id,
+                    dm_message_id=message.id,
+                    attachment_index=index,
+                )
+            )
+            added += 1
+
+        if not added:
+            await sendable.send(
+                "❌ Je n'ai pas compris — envoie une image en pièce jointe, "
+                "ou clique sur ✅ Terminé.",
+                view=collect_view,
+            )
+            continue
+
+        await sendable.send("✅ Image ajoutée !")
+
+    stop_wait.cancel()
+    collect_view.stop()
+    return media
+
+
+class _MediaOptInView(discord.ui.View):
+    """Ask whether to attach an image, before showing the confirmation step either way."""
+
+    def __init__(
+        self,
+        guild_id: int,
+        guild_name: str,
+        content: str,
+        target_label: str,
+        choice_labels: list[str],
+    ):
+        """Store everything needed to build the confirm step once media is decided."""
+        super().__init__(timeout=300)
+        self.guild_id = guild_id
+        self.guild_name = guild_name
+        self.content = content
+        self.target_label = target_label
+        self.choice_labels = choice_labels
+
+    @discord.ui.button(label="📎 Ajouter une image", style=discord.ButtonStyle.primary)
+    async def add_media(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
+        """Collect one image via a follow-up DM step, then send the confirm step below it.
+
+        The confirm step is a new message, not an edit of the (now scrolled-up) collection
+        prompt, so it lands right after whatever the user just sent instead of requiring a
+        scroll back up to find the Confirmer/Annuler buttons.
+        """
+        media = await _run_media_collection(interaction)
+        image_url = media[0].media_url if media else None
+        embed = _build_confirm_embed(
+            self.content,
+            self.guild_name,
+            self.target_label,
+            self.choice_labels,
+            image_url,
+        )
+        view = ConfirmSubmitView(
+            self.guild_id, self.content, self.target_label, self.choice_labels, media
+        )
+        await interaction.edit_original_response(
+            content="📎 Étape médias terminée.", embed=None, view=None
+        )
+        sendable = cast("discord.abc.Messageable", interaction.channel)
+        await sendable.send(embed=embed, view=view)
+
+    @discord.ui.button(label="➡️ Passer", style=discord.ButtonStyle.secondary)
+    async def skip(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Move directly to the confirm step with no media."""
+        embed = _build_confirm_embed(
+            self.content, self.guild_name, self.target_label, self.choice_labels, None
+        )
+        view = ConfirmSubmitView(
+            self.guild_id, self.content, self.target_label, self.choice_labels, []
+        )
+        await interaction.response.edit_message(content=None, embed=embed, view=view)
+
+    async def on_error(
+        self,
+        interaction: discord.Interaction,
+        error: Exception,
+        item: discord.ui.Item[Any],
+        /,
+    ) -> None:
+        """Log and notify the user on an unexpected error during the media opt-in step."""
+        await notify_unexpected_error(interaction, error, logger)
 
 
 class TargetSelectView(discord.ui.View):
@@ -249,15 +425,20 @@ class ChoiceBuilderView(discord.ui.View):
 
     @discord.ui.button(label="✅ Terminer", style=discord.ButtonStyle.success)
     async def finish(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Show the confirmation step with the anecdote, target, and choices collected."""
+        """Show the media opt-in step, before the confirmation step."""
         choice_labels = list(self.choices)
-        embed = _build_confirm_embed(
-            self.content, self.guild.name, self.target_label, choice_labels
+        view = _MediaOptInView(
+            self.guild_id,
+            self.guild.name,
+            self.content,
+            self.target_label,
+            choice_labels,
         )
-        view = ConfirmSubmitView(
-            self.guild_id, self.content, self.target_label, choice_labels
+        await interaction.response.edit_message(
+            content="Veux-tu ajouter une image à ton anecdote ?",
+            embed=None,
+            view=view,
         )
-        await interaction.response.edit_message(embed=embed, view=view)
 
     @discord.ui.button(label="❌ Annuler", style=discord.ButtonStyle.danger)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -317,9 +498,13 @@ class AddChoiceModal(discord.ui.Modal, title="Ajouter un choix"):
 
 
 def _build_confirm_embed(
-    content: str, guild_name: str, target_label: str, choice_labels: list[str]
+    content: str,
+    guild_name: str,
+    target_label: str,
+    choice_labels: list[str],
+    image_url: str | None,
 ) -> discord.Embed:
-    """Build the embed confirming an anecdote's content, target, and MCQ wrong choices."""
+    """Build the embed confirming an anecdote's content, target, MCQ choices, and image."""
     embed = discord.Embed(
         title="Confirme ta soumission", description=with_blank_lines(content)
     )
@@ -331,6 +516,8 @@ def _build_confirm_embed(
             inline=False,
         )
     embed.add_field(name="Serveur", value=guild_name, inline=True)
+    if image_url is not None:
+        embed.set_image(url=image_url)
     return embed
 
 
@@ -359,15 +546,16 @@ class AnecdoteModal(discord.ui.Modal, title="Soumettre une anecdote"):
         self.choice_labels = choice_labels
 
     async def on_submit(self, interaction: discord.Interaction):
-        """Replace the form with a confirmation step before saving the anecdote."""
+        """Show the media opt-in step, before the confirmation step."""
         text = str(self.content)
-        embed = _build_confirm_embed(
-            text, self.guild.name, self.target_label, self.choice_labels
+        view = _MediaOptInView(
+            self.guild_id, self.guild.name, text, self.target_label, self.choice_labels
         )
-        view = ConfirmSubmitView(
-            self.guild_id, text, self.target_label, self.choice_labels
+        await interaction.response.edit_message(
+            content="Veux-tu ajouter une image à ton anecdote ?",
+            embed=None,
+            view=view,
         )
-        await interaction.response.edit_message(content=None, embed=embed, view=view)
 
     async def on_error(
         self, interaction: discord.Interaction, error: Exception, /
@@ -385,13 +573,15 @@ class ConfirmSubmitView(discord.ui.View):
         content: str,
         target_label: str,
         choice_labels: list[str],
+        media: list[AnecdoteMedia],
     ):
-        """Store the pending anecdote's guild, content, target, and MCQ wrong choices."""
+        """Store the pending anecdote's guild, content, target, MCQ wrong choices, and media."""
         super().__init__(timeout=300)
         self.guild_id = guild_id
         self.content = content
         self.target_label = target_label
         self.choice_labels = choice_labels
+        self.media = media
 
     @discord.ui.button(label="Confirmer", style=discord.ButtonStyle.success)
     async def confirm(
@@ -406,6 +596,7 @@ class ConfirmSubmitView(discord.ui.View):
             self.content,
             target_label=self.target_label,
             choice_labels=self.choice_labels,
+            media=self.media,
         )
         await interaction.response.edit_message(
             content="✅ Ton anecdote a été soumise.", embed=None, view=None

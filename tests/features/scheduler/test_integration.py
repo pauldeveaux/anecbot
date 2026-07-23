@@ -47,12 +47,20 @@ class _FakeChannel:
 
     async def send(
         self,
+        content: str | None = None,
         *,
         embed: discord.Embed | None = None,
+        embeds: list[discord.Embed] | None = None,
         view: discord.ui.View | None = None,
     ) -> _FakeMessage:
-        """Record the send and return a fake message with a fixed id."""
-        self.sent_embeds.append(embed)
+        """Record the send and return a fake message with a fixed id.
+
+        Accepts both embed= (leaderboard) and embeds= (publisher), since this fake is shared
+        across the integration test exercising both.
+        """
+        self.sent_embeds.append(
+            embed if embed is not None else (embeds[0] if embeds else None)
+        )
         message = _FakeMessage(message_id=999)
         self._messages[message.id] = message
         return message

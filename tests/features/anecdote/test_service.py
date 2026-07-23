@@ -1,4 +1,4 @@
-from typing import cast
+from typing import Any, cast
 
 import discord
 import pytest
@@ -12,13 +12,16 @@ from anecbot.features.anecdote.service import (
     discard_pending_anecdotes,
     get_choices,
     get_correct_choice,
+    get_media,
     get_owned_pending_anecdote,
     get_pending_by_author,
     player_has_anecdotes,
+    resolve_media_urls,
     update_content,
 )
 from anecbot.models.anecdote import Anecdote
 from anecbot.models.anecdote_choice import AnecdoteChoice
+from anecbot.models.anecdote_media import AnecdoteMedia
 from anecbot.models.guild import Guild
 from anecbot.models.player import Player
 
@@ -156,6 +159,48 @@ async def test_create_anecdote_clears_empty_queue_warning(db, players):
 
 
 @pytest.mark.asyncio
+async def test_create_anecdote_writes_media_in_order(db, players):
+    """create_anecdote persists media items with position matching collection order."""
+    media = [
+        AnecdoteMedia(media_url="https://example.com/a.gif"),
+        AnecdoteMedia(
+            media_url="https://cdn.discordapp.com/b.png",
+            dm_channel_id=10,
+            dm_message_id=20,
+            attachment_index=0,
+        ),
+    ]
+    anecdote = await create_anecdote(
+        db,
+        GUILD_ID,
+        AUTHOR_ID,
+        "x",
+        target_label="Cible",
+        choice_labels=[],
+        media=media,
+    )
+
+    result = await get_media(db, anecdote.id)
+    assert [m.media_url for m in result] == [
+        "https://example.com/a.gif",
+        "https://cdn.discordapp.com/b.png",
+    ]
+    assert [m.position for m in result] == [0, 1]
+    assert result[1].dm_channel_id == 10
+    assert result[1].dm_message_id == 20
+
+
+@pytest.mark.asyncio
+async def test_create_anecdote_with_no_media(db, players):
+    """create_anecdote works with no media at all (the default)."""
+    anecdote = await create_anecdote(
+        db, GUILD_ID, AUTHOR_ID, "x", target_label="Cible", choice_labels=[]
+    )
+
+    assert await get_media(db, anecdote.id) == []
+
+
+@pytest.mark.asyncio
 async def test_get_correct_choice_returns_the_target(db, players):
     """get_correct_choice returns the choice flagged as correct, not a wrong one."""
     anecdote = await create_anecdote(
@@ -256,6 +301,23 @@ async def test_delete_anecdote_removes_row(db, players):
 async def test_delete_anecdote_missing_returns_false(db, players):
     """delete_anecdote returns False for a nonexistent id."""
     assert await delete_anecdote(db, 999) is False
+
+
+@pytest.mark.asyncio
+async def test_delete_anecdote_cascades_to_media(db, players):
+    """Deleting an anecdote also removes its media rows (ON DELETE CASCADE)."""
+    anecdote = await create_anecdote(
+        db,
+        GUILD_ID,
+        AUTHOR_ID,
+        "x",
+        target_label="Cible",
+        choice_labels=[],
+        media=[AnecdoteMedia(media_url="https://example.com/a.gif")],
+    )
+
+    assert await delete_anecdote(db, anecdote.id) is True
+    assert await get_media(db, anecdote.id) == []
 
 
 @pytest.mark.asyncio
@@ -469,6 +531,141 @@ async def test_backfill_ignores_revealed_anecdotes(db, players):
     updated = await AnecdoteChoice.get(db, choice.id)
     assert updated is not None
     assert updated.label == str(TARGET_ID)
+
+
+class _FakeResponse:
+    """Stand-in for an aiohttp response — only status/reason are read by HTTPException."""
+
+    status = 404
+    reason = "Not Found"
+
+
+def _http_not_found() -> discord.HTTPException:
+    """Build a discord.HTTPException usable as a fake 404, without a real HTTP response."""
+    return discord.HTTPException(cast(Any, _FakeResponse()), "Not Found")
+
+
+class _FakeAttachment:
+    """Stand-in for discord.Attachment — only url is used."""
+
+    def __init__(self, url: str):
+        self.url = url
+
+
+class _FakeMediaMessage:
+    """Stand-in for discord.Message — only attachments is used."""
+
+    def __init__(self, attachments: list[_FakeAttachment]):
+        self.attachments = attachments
+
+
+class _FakeMediaChannel:
+    """Stand-in for a DM channel — only fetch_message is used."""
+
+    def __init__(self, messages: dict[int, _FakeMediaMessage] | None = None):
+        self._messages = messages or {}
+
+    async def fetch_message(self, message_id: int) -> _FakeMediaMessage:
+        """Return the configured fake message, or raise 404 if unknown."""
+        if message_id not in self._messages:
+            raise _http_not_found()
+        return self._messages[message_id]
+
+
+class _FakeMediaBot:
+    """Stand-in for discord.Client — only get_channel is used."""
+
+    def __init__(self, channel: "_FakeMediaChannel | None"):
+        self._channel = channel
+
+    def get_channel(self, channel_id: int):
+        """Return the configured fake channel, or None."""
+        return self._channel
+
+
+@pytest.mark.asyncio
+async def test_resolve_media_urls_returns_plain_url_as_is():
+    """A pasted-URL item (no dm ids) is returned as-is, with no bot call needed."""
+    item = AnecdoteMedia(id=1, anecdote_id=1, media_url="https://example.com/a.gif")
+
+    urls = await resolve_media_urls(cast(discord.Client, _FakeMediaBot(None)), [item])
+
+    assert urls == ["https://example.com/a.gif"]
+
+
+@pytest.mark.asyncio
+async def test_resolve_media_urls_refreshes_attachment_url():
+    """An attachment-sourced item is re-fetched from its source DM message, not the stored url."""
+    fresh = _FakeAttachment("https://cdn.discordapp.com/fresh.png?ex=1")
+    channel = _FakeMediaChannel({20: _FakeMediaMessage([fresh])})
+    item = AnecdoteMedia(
+        id=1,
+        anecdote_id=1,
+        media_url="https://cdn.discordapp.com/stale.png?ex=0",
+        dm_channel_id=10,
+        dm_message_id=20,
+        attachment_index=0,
+    )
+
+    urls = await resolve_media_urls(
+        cast(discord.Client, _FakeMediaBot(channel)), [item]
+    )
+
+    assert urls == ["https://cdn.discordapp.com/fresh.png?ex=1"]
+
+
+@pytest.mark.asyncio
+async def test_resolve_media_urls_skips_unreachable_source_message():
+    """A deleted/unreachable source DM message is skipped, not raised."""
+    channel = _FakeMediaChannel({})
+    item = AnecdoteMedia(
+        id=1, anecdote_id=1, media_url="x", dm_channel_id=10, dm_message_id=20
+    )
+
+    urls = await resolve_media_urls(
+        cast(discord.Client, _FakeMediaBot(channel)), [item]
+    )
+
+    assert urls == []
+
+
+@pytest.mark.asyncio
+async def test_resolve_media_urls_skips_missing_attachment_index():
+    """A stale attachment_index past the refetched message's attachment list is skipped."""
+    channel = _FakeMediaChannel({20: _FakeMediaMessage([])})
+    item = AnecdoteMedia(
+        id=1,
+        anecdote_id=1,
+        media_url="x",
+        dm_channel_id=10,
+        dm_message_id=20,
+        attachment_index=0,
+    )
+
+    urls = await resolve_media_urls(
+        cast(discord.Client, _FakeMediaBot(channel)), [item]
+    )
+
+    assert urls == []
+
+
+@pytest.mark.asyncio
+async def test_resolve_media_urls_preserves_order_and_skips_in_place():
+    """Reachable items keep their position order; an unreachable one is simply dropped."""
+    channel = _FakeMediaChannel({20: _FakeMediaMessage([_FakeAttachment("b")])})
+    items = [
+        AnecdoteMedia(id=1, anecdote_id=1, media_url="a"),
+        AnecdoteMedia(
+            id=2, anecdote_id=1, media_url="x", dm_channel_id=10, dm_message_id=999
+        ),
+        AnecdoteMedia(
+            id=3, anecdote_id=1, media_url="x", dm_channel_id=10, dm_message_id=20
+        ),
+    ]
+
+    urls = await resolve_media_urls(cast(discord.Client, _FakeMediaBot(channel)), items)
+
+    assert urls == ["a", "b"]
 
 
 @pytest.mark.asyncio
