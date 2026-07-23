@@ -11,6 +11,7 @@ from anecbot.features.anecdote.repository import (
 )
 from anecbot.models.anecdote import Anecdote
 from anecbot.models.anecdote_choice import AnecdoteChoice
+from anecbot.models.anecdote_media import AnecdoteMedia
 from anecbot.models.enums import AnecdoteState
 from anecbot.models.guild import Guild
 
@@ -47,12 +48,16 @@ async def create_anecdote(
     *,
     target_label: str,
     choice_labels: Sequence[str],
+    media: Sequence[AnecdoteMedia] = (),
 ) -> Anecdote:
     """Create a new anecdote in PENDING state with its MCQ choices, clear the empty-queue flag.
 
     target_label and choice_labels are always plain text — resolved from the guild's roster at
     submission time if the author picked a registered player, or typed freely for a custom
     target — so there's a single representation regardless of how the target was chosen.
+
+    media is a sequence of AnecdoteMedia used as plain data carriers (their id/anecdote_id/
+    position fields are ignored and re-derived here, matching the collection order).
     """
     anecdote = await Anecdote.create(
         db, guild_id=guild_id, author_id=author_id, content=content
@@ -63,6 +68,16 @@ async def create_anecdote(
     for label in choice_labels:
         await AnecdoteChoice.create(
             db, anecdote_id=anecdote.id, label=label, is_correct=0
+        )
+    for position, item in enumerate(media):
+        await AnecdoteMedia.create(
+            db,
+            anecdote_id=anecdote.id,
+            position=position,
+            media_url=item.media_url,
+            dm_channel_id=item.dm_channel_id,
+            dm_message_id=item.dm_message_id,
+            attachment_index=item.attachment_index,
         )
     await Guild.update(db, guild_id, queue_empty_warned=0)
     logger.info("Anecdote %s created for guild %s", anecdote.id, guild_id)
@@ -105,6 +120,47 @@ async def get_choices(
 ) -> list[AnecdoteChoice]:
     """Return all MCQ choices for an anecdote (the target and its wrong choices)."""
     return await AnecdoteChoice.list(db, anecdote_id=anecdote_id)
+
+
+async def get_media(
+    db: psycopg.AsyncConnection, anecdote_id: int
+) -> list[AnecdoteMedia]:
+    """Return an anecdote's images in display order."""
+    media = await AnecdoteMedia.list(db, anecdote_id=anecdote_id)
+    return sorted(media, key=lambda m: m.position)
+
+
+async def resolve_media_urls(
+    bot: discord.Client, media_items: Sequence[AnecdoteMedia]
+) -> list[str]:
+    """Return each media item's current URL, refreshing attachment-sourced ones from their DM.
+
+    Discord's attachment CDN URLs are signed and expire (~24h), so a URL stored at submission
+    time can go stale by the time the anecdote is published or its embed is later rebuilt. An
+    item is only re-fetched when it carries a dm_message_id (i.e. came from an attachment). If
+    the source DM message is no longer reachable, that item is skipped (logged) rather than
+    failing the whole batch.
+    """
+    urls = []
+    for item in media_items:
+        if item.dm_message_id is None:
+            urls.append(item.media_url)
+            continue
+        assert item.dm_channel_id is not None
+        try:
+            channel = bot.get_channel(item.dm_channel_id) or await bot.fetch_channel(
+                item.dm_channel_id
+            )
+            message = await channel.fetch_message(item.dm_message_id)  # type: ignore[union-attr]
+            urls.append(message.attachments[item.attachment_index or 0].url)
+        except (discord.HTTPException, IndexError) as error:
+            logger.warning(
+                "Could not refresh media %s for anecdote %s: %s",
+                item.id,
+                item.anecdote_id,
+                error,
+            )
+    return urls
 
 
 async def get_correct_choice(
