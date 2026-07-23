@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import sys
 from pathlib import Path
 
 import discord
@@ -20,6 +21,17 @@ from anecbot.utils.time import utcnow
 from anecbot.models.database import close_db, init_db
 
 logger = logging.getLogger(__name__)
+
+
+async def _windows_ctrl_c_wakeup() -> None:
+    """Wake the event loop every second so Ctrl+C is caught promptly.
+
+    Windows' SelectorEventLoop (required here for psycopg's async mode) blocks in a native
+    select() call until the next scheduled event — up to a minute away, e.g. batch_loop — during
+    which a pending Ctrl+C can't be delivered. A frequent no-op keeps that wait short.
+    """
+    while True:
+        await asyncio.sleep(1)
 
 
 class Bot(commands.Bot):
@@ -78,6 +90,8 @@ def create_bot(settings: Settings) -> Bot:
 
     async def setup_hook() -> None:
         """Initialize the database, load cogs, and start background tasks."""
+        if sys.platform == "win32":
+            asyncio.ensure_future(_windows_ctrl_c_wakeup())
         bot.db = await init_db(settings.database_url, Path(settings.migrations_dir))
         logger.info("Database initialized")
         await bot.load_extension("anecbot.cogs")
