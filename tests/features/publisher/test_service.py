@@ -5,8 +5,10 @@ import discord
 import pytest
 import pytest_asyncio
 
+from anecbot.features.anecdote.service import create_anecdote
 from anecbot.features.publisher.service import (
     build_anecdote_embed,
+    build_mcq_options,
     publish_and_open_voting,
     publish_next_anecdote,
     recover_stuck_publications,
@@ -102,13 +104,19 @@ async def players(db):
     await Player.upsert(db, GUILD_ID, TARGET_ID, can_be_target=1)
 
 
+async def _create_anecdote(db, content: str = "x") -> Anecdote:
+    """Create an anecdote with its MCQ choices via the real service, ready to publish/reveal."""
+    return await create_anecdote(
+        db, GUILD_ID, AUTHOR_ID, content, target_label="Cible", choice_labels=["Autre"]
+    )
+
+
 def test_build_anecdote_embed_shows_content_only():
     """The embed shows the anecdote's content and no target/author info, no reveal date."""
     anecdote = Anecdote(
         id=1,
         guild_id=GUILD_ID,
         author_id=AUTHOR_ID,
-        target_id=TARGET_ID,
         content="Un truc drôle",
     )
 
@@ -117,15 +125,12 @@ def test_build_anecdote_embed_shows_content_only():
     content_field = embed.fields[0]
     assert content_field.value == with_blank_lines("Un truc drôle")
     assert str(AUTHOR_ID) not in (embed.title or "")
-    assert str(TARGET_ID) not in (embed.title or "")
     assert all(f.name != "🔍 Révélation prévue" for f in embed.fields)
 
 
 def test_build_anecdote_embed_shows_reveal_date_when_given():
     """When a reveal_at datetime is passed, it's shown as a dedicated field."""
-    anecdote = Anecdote(
-        id=1, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
-    )
+    anecdote = Anecdote(id=1, guild_id=GUILD_ID, author_id=AUTHOR_ID, content="x")
     reveal_at = datetime(2026, 7, 15, 13, 30)
 
     embed = build_anecdote_embed(anecdote, reveal_at)
@@ -137,9 +142,7 @@ def test_build_anecdote_embed_shows_reveal_date_when_given():
 @pytest.mark.asyncio
 async def test_publish_next_anecdote_transitions_to_running(db, players):
     """Publishing sends the embed, sets state to RUNNING, and stores the message id."""
-    anecdote = await Anecdote.create(
-        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
-    )
+    anecdote = await _create_anecdote(db)
     channel = _FakeChannel()
     bot = _FakeBot({CHANNEL_ID: channel})
 
@@ -205,9 +208,7 @@ async def test_send_empty_queue_warning_skips_when_already_warned(db, players):
 @pytest.mark.asyncio
 async def test_publish_and_open_voting_reaches_published(db, players):
     """Publishing attaches the MCQ, shows the reveal date, and sets published_at."""
-    await Anecdote.create(
-        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
-    )
+    await _create_anecdote(db)
     channel = _FakeChannel()
     bot = _FakeBot({CHANNEL_ID: channel}, guild=_FakeGuild(GUILD_ID))
 
@@ -243,7 +244,7 @@ async def test_publish_and_open_voting_warns_once_when_empty(db, players):
 async def test_refresh_published_reveal_dates_updates_message(db, players):
     """Every PUBLISHED anecdote's message is re-edited with a fresh reveal date."""
     anecdote = await Anecdote.create(
-        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
+        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, content="x"
     )
     await Anecdote.update(
         db,
@@ -270,7 +271,7 @@ async def test_refresh_published_reveal_dates_updates_message(db, players):
 async def test_refresh_published_reveal_dates_ignores_non_published(db, players):
     """PENDING/RUNNING/REVEALED anecdotes' messages are left untouched."""
     anecdote = await Anecdote.create(
-        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
+        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, content="x"
     )
     await Anecdote.update(db, anecdote.id, state="RUNNING", anecdote_message_id=999)
     channel = _FakeChannel()
@@ -291,15 +292,35 @@ async def test_refresh_published_reveal_dates_no_channel_configured(db):
     await refresh_published_reveal_dates(cast(discord.Client, bot), db, GUILD_ID)
 
 
+# --- build_mcq_options ---
+
+
+@pytest.mark.asyncio
+async def test_build_mcq_options_uses_anecdote_choices(db, players):
+    """Options are built from the anecdote's own choices, target included."""
+    anecdote = await create_anecdote(
+        db,
+        GUILD_ID,
+        AUTHOR_ID,
+        "x",
+        target_label="Le stagiaire",
+        choice_labels=["Le concierge", "Le DRH"],
+    )
+
+    options = await build_mcq_options(db, anecdote)
+
+    labels = {label for label, _ in options}
+    assert labels == {"Le stagiaire", "Le concierge", "Le DRH"}
+    assert len(options) == 3
+
+
 # --- recover_stuck_publications ---
 
 
 @pytest.mark.asyncio
 async def test_recover_stuck_publications_finishes_when_message_was_sent(db, players):
     """A RUNNING anecdote with a known message id resumes to PUBLISHED with the MCQ view."""
-    anecdote = await Anecdote.create(
-        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
-    )
+    anecdote = await _create_anecdote(db)
     await Anecdote.update(db, anecdote.id, state="RUNNING", anecdote_message_id=999)
     channel = _FakeChannel()
     channel._messages[999] = _FakeMessage(999)
@@ -323,7 +344,7 @@ async def test_recover_stuck_publications_reverts_when_message_was_never_sent(
 ):
     """A RUNNING anecdote with no known message id reverts to PENDING for a clean retry."""
     anecdote = await Anecdote.create(
-        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
+        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, content="x"
     )
     await Anecdote.update(db, anecdote.id, state="RUNNING")
     bot = _FakeBot({}, guild=_FakeGuild(GUILD_ID))
@@ -340,7 +361,7 @@ async def test_recover_stuck_publications_reverts_when_message_was_never_sent(
 async def test_recover_stuck_publications_ignores_other_states(db, players):
     """PENDING/PUBLISHED/REVEALED anecdotes are left untouched."""
     pending = await Anecdote.create(
-        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
+        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, content="x"
     )
     bot = _FakeBot({}, guild=_FakeGuild(GUILD_ID))
 
@@ -371,9 +392,7 @@ async def test_restore_active_views_registers_a_view_per_published_anecdote(
     db, players
 ):
     """Each PUBLISHED anecdote gets a persistent view registered, bound to its message id."""
-    anecdote = await Anecdote.create(
-        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
-    )
+    anecdote = await _create_anecdote(db)
     await Anecdote.update(db, anecdote.id, state="PUBLISHED", anecdote_message_id=999)
     bot = _FakeBot({}, guild=_FakeGuild(GUILD_ID))
 
@@ -388,9 +407,7 @@ async def test_restore_active_views_registers_a_view_per_published_anecdote(
 @pytest.mark.asyncio
 async def test_restore_active_views_ignores_other_states(db, players):
     """PENDING/RUNNING/REVEALED anecdotes get no view registered."""
-    await Anecdote.create(
-        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
-    )
+    await Anecdote.create(db, guild_id=GUILD_ID, author_id=AUTHOR_ID, content="x")
     bot = _FakeBot({}, guild=_FakeGuild(GUILD_ID))
 
     await restore_active_views(cast(discord.Client, bot), db)
@@ -402,7 +419,7 @@ async def test_restore_active_views_ignores_other_states(db, players):
 async def test_restore_active_views_skips_guild_the_bot_has_left(db, players):
     """No view is registered when the bot is no longer in the anecdote's guild."""
     anecdote = await Anecdote.create(
-        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
+        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, content="x"
     )
     await Anecdote.update(db, anecdote.id, state="PUBLISHED", anecdote_message_id=999)
     bot = _FakeBot({}, guild=None)

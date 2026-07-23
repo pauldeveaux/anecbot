@@ -6,6 +6,7 @@ import psycopg
 import pytest
 import pytest_asyncio
 
+from anecbot.features.anecdote.service import create_anecdote, get_correct_choice
 from anecbot.features.revealer.service import (
     build_reveal_embed,
     get_due_reveals,
@@ -13,6 +14,7 @@ from anecbot.features.revealer.service import (
     reveal_due_anecdotes,
 )
 from anecbot.models.anecdote import Anecdote
+from anecbot.models.anecdote_choice import AnecdoteChoice
 from anecbot.models.guild import Guild
 from anecbot.models.leaderboard import LeaderboardEntry
 from anecbot.models.player import Player
@@ -24,6 +26,9 @@ CHANNEL_ID = 555
 AUTHOR_ID = 1
 TARGET_ID = 2
 VOTER_ID = 3
+WRONG_CHOICE_ID = (
+    -1
+)  # never matches a real AnecdoteChoice id — stands in for "guessed wrong"
 
 
 class _FakeMessage:
@@ -112,13 +117,14 @@ async def players(db):
 async def _published_anecdote(
     db: psycopg.AsyncConnection, published_at: str, message_id: int = 999
 ) -> Anecdote:
-    """Insert a PUBLISHED anecdote with a fixed published_at and message id."""
-    created = await Anecdote.create(
+    """Insert a PUBLISHED anecdote (with its MCQ choices) with a fixed published_at/message id."""
+    created = await create_anecdote(
         db,
-        guild_id=GUILD_ID,
-        author_id=AUTHOR_ID,
-        target_id=TARGET_ID,
-        content="Un truc",
+        GUILD_ID,
+        AUTHOR_ID,
+        "Un truc",
+        target_label="Cible",
+        choice_labels=["Autre"],
     )
     return await Anecdote.update(
         db,
@@ -127,6 +133,11 @@ async def _published_anecdote(
         published_at=published_at,
         anecdote_message_id=message_id,
     )
+
+
+async def _correct_choice_id(db: psycopg.AsyncConnection, anecdote_id: int) -> int:
+    """Return the id of the anecdote's correct choice, to cast a matching vote."""
+    return (await get_correct_choice(db, anecdote_id)).id
 
 
 @pytest.mark.asyncio
@@ -155,7 +166,7 @@ async def test_get_due_reveals_excludes_not_yet_due(db, players):
 async def test_get_due_reveals_ignores_non_published(db, players):
     """PENDING anecdotes are never candidates (same for RUNNING/REVEALED)."""
     created = await Anecdote.create(
-        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
+        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, content="x"
     )
     now = datetime(2026, 7, 14, 14, 0)
 
@@ -180,30 +191,25 @@ async def test_get_due_reveals_includes_revealing_unconditionally(db, players):
 def test_build_reveal_embed_shows_votes_and_spoiler():
     """The embed lists each vote with a correctness mark and spoiler-tags the answer."""
     anecdote = Anecdote(
-        id=1,
-        guild_id=GUILD_ID,
-        author_id=AUTHOR_ID,
-        target_id=TARGET_ID,
-        content="Un truc drôle",
+        id=1, guild_id=GUILD_ID, author_id=AUTHOR_ID, content="Un truc drôle"
     )
-    votes = [
-        Vote(anecdote_id=1, user_id=VOTER_ID, voted_for_id=TARGET_ID),
+    choices = [
+        AnecdoteChoice(id=1, anecdote_id=1, label="Cible", is_correct=1),
+        AnecdoteChoice(id=2, anecdote_id=1, label="Autre", is_correct=0),
     ]
+    votes = [Vote(anecdote_id=1, user_id=VOTER_ID, voted_for_id=1)]
     players = {
         AUTHOR_ID: Player(guild_id=GUILD_ID, user_id=AUTHOR_ID),
-        TARGET_ID: Player(guild_id=GUILD_ID, user_id=TARGET_ID),
         VOTER_ID: Player(guild_id=GUILD_ID, user_id=VOTER_ID),
     }
     guild = _FakeGuild(
         GUILD_ID,
-        {
-            AUTHOR_ID: _FakeMember("Auteur"),
-            TARGET_ID: _FakeMember("Cible"),
-            VOTER_ID: _FakeMember("Votant"),
-        },
+        {AUTHOR_ID: _FakeMember("Auteur"), VOTER_ID: _FakeMember("Votant")},
     )
 
-    embed = build_reveal_embed(anecdote, votes, players, cast(discord.Guild, guild))
+    embed = build_reveal_embed(
+        anecdote, votes, players, cast(discord.Guild, guild), choices
+    )
 
     content_field = embed.fields[0]
     assert content_field.value == with_blank_lines("Un truc drôle")
@@ -219,11 +225,10 @@ def test_build_reveal_embed_shows_votes_and_spoiler():
 
 def test_build_reveal_embed_no_votes():
     """With no votes, the Votes field says so instead of listing anything."""
-    anecdote = Anecdote(
-        id=1, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
-    )
+    anecdote = Anecdote(id=1, guild_id=GUILD_ID, author_id=AUTHOR_ID, content="x")
+    choices = [AnecdoteChoice(id=1, anecdote_id=1, label="Cible", is_correct=1)]
 
-    embed = build_reveal_embed(anecdote, [], {}, None)
+    embed = build_reveal_embed(anecdote, [], {}, None, choices)
 
     votes_field = next(f for f in embed.fields if f.name == "🗳️ Votes")
     assert votes_field.value == "Aucun vote."
@@ -231,20 +236,21 @@ def test_build_reveal_embed_no_votes():
 
 def test_build_reveal_embed_falls_back_to_count_when_votes_list_too_long():
     """Beyond the field length cap, the per-voter list is replaced by a numeric summary."""
-    anecdote = Anecdote(
-        id=1, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
-    )
+    anecdote = Anecdote(id=1, guild_id=GUILD_ID, author_id=AUTHOR_ID, content="x")
+    choices = [AnecdoteChoice(id=1, anecdote_id=1, label="Cible", is_correct=1)]
     players = {i: Player(guild_id=GUILD_ID, user_id=i) for i in range(100)}
     guild = _FakeGuild(
         GUILD_ID,
         {i: _FakeMember(f"Joueur avec un nom long {i}") for i in range(100)},
     )
     votes = [
-        Vote(anecdote_id=1, user_id=i, voted_for_id=TARGET_ID if i % 2 == 0 else i)
+        Vote(anecdote_id=1, user_id=i, voted_for_id=1 if i % 2 == 0 else 999 + i)
         for i in range(100)
     ]
 
-    embed = build_reveal_embed(anecdote, votes, players, cast(discord.Guild, guild))
+    embed = build_reveal_embed(
+        anecdote, votes, players, cast(discord.Guild, guild), choices
+    )
 
     votes_field = next(f for f in embed.fields if f.name == "🗳️ Votes")
     assert votes_field.value == "✅ 50/100 ont deviné juste"
@@ -254,7 +260,8 @@ def test_build_reveal_embed_falls_back_to_count_when_votes_list_too_long():
 async def test_reveal_anecdote_transitions_to_revealed(db, players):
     """Revealing closes the original message's view, replies with the results, and sets REVEALED."""
     anecdote = await _published_anecdote(db, "2026-07-13T15:00:00")
-    await Vote.upsert(db, anecdote.id, VOTER_ID, voted_for_id=TARGET_ID)
+    correct_id = await _correct_choice_id(db, anecdote.id)
+    await Vote.upsert(db, anecdote.id, VOTER_ID, voted_for_id=correct_id)
     message = _FakeMessage(999)
     channel = _FakeChannel({999: message})
     bot = _FakeBot({CHANNEL_ID: channel}, guild=_FakeGuild(GUILD_ID))
@@ -276,7 +283,8 @@ async def test_reveal_anecdote_transitions_to_revealed(db, players):
 async def test_reveal_anecdote_awards_points_to_correct_voter_and_author(db, players):
     """The correct voter and the anecdote's author each get +1 point."""
     anecdote = await _published_anecdote(db, "2026-07-13T15:00:00")
-    await Vote.upsert(db, anecdote.id, VOTER_ID, voted_for_id=TARGET_ID)
+    correct_id = await _correct_choice_id(db, anecdote.id)
+    await Vote.upsert(db, anecdote.id, VOTER_ID, voted_for_id=correct_id)
     channel = _FakeChannel({999: _FakeMessage(999)})
     bot = _FakeBot({CHANNEL_ID: channel}, guild=_FakeGuild(GUILD_ID))
 
@@ -294,7 +302,7 @@ async def test_reveal_anecdote_awards_points_to_correct_voter_and_author(db, pla
 async def test_reveal_anecdote_no_points_for_wrong_voter(db, players):
     """A voter who guessed wrong gets no point, but the author still does."""
     anecdote = await _published_anecdote(db, "2026-07-13T15:00:00")
-    await Vote.upsert(db, anecdote.id, VOTER_ID, voted_for_id=VOTER_ID)
+    await Vote.upsert(db, anecdote.id, VOTER_ID, voted_for_id=WRONG_CHOICE_ID)
     channel = _FakeChannel({999: _FakeMessage(999)})
     bot = _FakeBot({CHANNEL_ID: channel}, guild=_FakeGuild(GUILD_ID))
 
@@ -311,7 +319,8 @@ async def test_reveal_anecdote_no_points_for_wrong_voter(db, players):
 async def test_reveal_anecdote_resumes_from_revealing_without_reawarding(db, players):
     """Resuming a REVEALING anecdote (points already awarded) sends the reply but no extra points."""
     anecdote = await _published_anecdote(db, "2026-07-13T15:00:00")
-    await Vote.upsert(db, anecdote.id, VOTER_ID, voted_for_id=TARGET_ID)
+    correct_id = await _correct_choice_id(db, anecdote.id)
+    await Vote.upsert(db, anecdote.id, VOTER_ID, voted_for_id=correct_id)
     # Simulate a crash right after points were awarded but before the reply was sent.
     await LeaderboardEntry.upsert(db, GUILD_ID, VOTER_ID, points=1)
     await LeaderboardEntry.upsert(db, GUILD_ID, AUTHOR_ID, points=1)
@@ -339,7 +348,8 @@ async def test_reveal_anecdote_does_not_reaward_points_on_retry_from_published(
 ):
     """A crash after award_points but before the REVEALING write must not double-award on retry."""
     anecdote = await _published_anecdote(db, "2026-07-13T15:00:00")
-    await Vote.upsert(db, anecdote.id, VOTER_ID, voted_for_id=TARGET_ID)
+    correct_id = await _correct_choice_id(db, anecdote.id)
+    await Vote.upsert(db, anecdote.id, VOTER_ID, voted_for_id=correct_id)
     channel = _FakeChannel({999: _FakeMessage(999)})
     bot = _FakeBot({CHANNEL_ID: channel}, guild=_FakeGuild(GUILD_ID))
 
@@ -404,8 +414,13 @@ async def test_reveal_due_anecdotes_reveals_only_due_ones(db, players):
 async def test_reveal_due_anecdotes_publishes_leaderboard_once(db, players):
     """The leaderboard is posted exactly once after the batch, not per anecdote."""
     await _published_anecdote(db, "2026-07-13T15:00:00", message_id=999)
-    second = await Anecdote.create(
-        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="Autre"
+    second = await create_anecdote(
+        db,
+        GUILD_ID,
+        AUTHOR_ID,
+        "Autre",
+        target_label="Cible",
+        choice_labels=["Autre choix"],
     )
     await Anecdote.update(
         db,

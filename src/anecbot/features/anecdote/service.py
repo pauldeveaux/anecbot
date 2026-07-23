@@ -1,5 +1,7 @@
 import logging
+from collections.abc import Sequence
 
+import discord
 import psycopg
 
 from anecbot.features.anecdote.repository import (
@@ -8,10 +10,21 @@ from anecbot.features.anecdote.repository import (
     has_any_for_user,
 )
 from anecbot.models.anecdote import Anecdote
+from anecbot.models.anecdote_choice import AnecdoteChoice
 from anecbot.models.enums import AnecdoteState
 from anecbot.models.guild import Guild
 
 logger = logging.getLogger(__name__)
+
+# States a not-yet-REVEALED anecdote can be in — the only ones where a stale migration-backfilled
+# label (a raw user id) can still surface to players (PUBLISHED) or is worth fixing before it does
+# (PENDING/RUNNING/REVEALING).
+_NOT_REVEALED_STATES = (
+    AnecdoteState.PENDING,
+    AnecdoteState.RUNNING,
+    AnecdoteState.PUBLISHED,
+    AnecdoteState.REVEALING,
+)
 
 
 async def daily_limit_status(
@@ -30,20 +43,76 @@ async def create_anecdote(
     db: psycopg.AsyncConnection,
     guild_id: int,
     author_id: int,
-    target_id: int,
     content: str,
+    *,
+    target_label: str,
+    choice_labels: Sequence[str],
 ) -> Anecdote:
-    """Create a new anecdote in PENDING state and clear the empty-queue warning flag."""
+    """Create a new anecdote in PENDING state with its MCQ choices, clear the empty-queue flag.
+
+    target_label and choice_labels are always plain text — resolved from the guild's roster at
+    submission time if the author picked a registered player, or typed freely for a custom
+    target — so there's a single representation regardless of how the target was chosen.
+    """
     anecdote = await Anecdote.create(
-        db,
-        guild_id=guild_id,
-        author_id=author_id,
-        target_id=target_id,
-        content=content,
+        db, guild_id=guild_id, author_id=author_id, content=content
     )
+    await AnecdoteChoice.create(
+        db, anecdote_id=anecdote.id, label=target_label, is_correct=1
+    )
+    for label in choice_labels:
+        await AnecdoteChoice.create(
+            db, anecdote_id=anecdote.id, label=label, is_correct=0
+        )
     await Guild.update(db, guild_id, queue_empty_warned=0)
     logger.info("Anecdote %s created for guild %s", anecdote.id, guild_id)
     return anecdote
+
+
+async def backfill_migrated_target_labels(
+    bot: discord.Client, db: psycopg.AsyncConnection
+) -> int:
+    """Resolve migration-backfilled numeric choice labels to real display names, once.
+
+    migrations/0002_anecdote_choices.sql backfilled anecdote_choices from the dropped target_id
+    column using the raw user id as text, since Discord display names aren't reachable from SQL.
+    Once the bot is ready and has its member cache, replace any resolvable purely-numeric label
+    on a not-yet-REVEALED anecdote with the member's current display name, so publish/reveal show
+    names instead of ids. Safe to call on every startup: once a label is resolved it's no longer
+    numeric, so there's nothing left to redo on later runs.
+    """
+    resolved = 0
+    for state in _NOT_REVEALED_STATES:
+        for anecdote in await Anecdote.list(db, state=state):
+            guild = bot.get_guild(anecdote.guild_id)
+            if guild is None:
+                continue
+            for choice in await get_choices(db, anecdote.id):
+                if not choice.label.isdigit():
+                    continue
+                member = guild.get_member(int(choice.label))
+                if member is None:
+                    continue
+                await AnecdoteChoice.update(db, choice.id, label=member.display_name)
+                resolved += 1
+    if resolved:
+        logger.info("Resolved %d migration-backfilled choice label(s)", resolved)
+    return resolved
+
+
+async def get_choices(
+    db: psycopg.AsyncConnection, anecdote_id: int
+) -> list[AnecdoteChoice]:
+    """Return all MCQ choices for an anecdote (the target and its wrong choices)."""
+    return await AnecdoteChoice.list(db, anecdote_id=anecdote_id)
+
+
+async def get_correct_choice(
+    db: psycopg.AsyncConnection, anecdote_id: int
+) -> AnecdoteChoice:
+    """Return the choice that is the anecdote's actual target."""
+    choices = await get_choices(db, anecdote_id)
+    return next(c for c in choices if c.is_correct)
 
 
 async def get_pending_by_author(
@@ -85,7 +154,7 @@ async def delete_anecdote(db: psycopg.AsyncConnection, anecdote_id: int) -> bool
 async def player_has_anecdotes(
     db: psycopg.AsyncConnection, guild_id: int, user_id: int
 ) -> bool:
-    """Return whether the player has any anecdotes referencing them as author or target."""
+    """Return whether the player has authored any anecdote in the guild."""
     return await has_any_for_user(db, guild_id, user_id)
 
 

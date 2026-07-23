@@ -1,4 +1,5 @@
 import logging
+import random
 from datetime import datetime
 from typing import cast
 from zoneinfo import ZoneInfo
@@ -6,7 +7,7 @@ from zoneinfo import ZoneInfo
 import psycopg
 import discord
 
-from anecbot.features.player.service import get_active_targets
+from anecbot.features.anecdote.service import get_choices
 from anecbot.features.publisher.views import McqView
 from anecbot.features.selector.service import select_pending_anecdote
 from anecbot.models.anecdote import Anecdote
@@ -21,6 +22,15 @@ from anecbot.utils.time import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+async def build_mcq_options(
+    db: psycopg.AsyncConnection, anecdote: Anecdote
+) -> list[tuple[str, int]]:
+    """Build the MCQ's (label, value) options from the anecdote's own choices, shuffled."""
+    choices = await get_choices(db, anecdote.id)
+    random.shuffle(choices)
+    return [(c.label, c.id) for c in choices]
 
 
 def build_anecdote_embed(
@@ -86,8 +96,6 @@ async def finish_publishing(
     bot: discord.Client, db: psycopg.AsyncConnection, guild: Guild, anecdote: Anecdote
 ) -> Anecdote:
     """Open voting on an already-RUNNING anecdote and transition it to PUBLISHED."""
-    discord_guild = bot.get_guild(guild.guild_id)
-    assert discord_guild is not None
     assert anecdote.anecdote_message_id is not None
     assert guild.channel_id is not None
 
@@ -105,8 +113,8 @@ async def finish_publishing(
         ZoneInfo(guild.timezone),
     )
 
-    targets = await get_active_targets(db, guild.guild_id)
-    view = McqView(anecdote.id, targets, discord_guild)
+    options = await build_mcq_options(db, anecdote)
+    view = McqView(anecdote.id, options)
     embed = build_anecdote_embed(anecdote, reveal_at)
     await message.edit(embed=embed, view=view)
 
@@ -196,12 +204,11 @@ async def restore_active_views(
         guild = await Guild.get(db, anecdote.guild_id)
         if guild is None or guild.channel_id is None:
             continue
-        discord_guild = bot.get_guild(anecdote.guild_id)
-        if discord_guild is None:
+        if bot.get_guild(anecdote.guild_id) is None:
             continue
 
-        targets = await get_active_targets(db, anecdote.guild_id)
-        view = McqView(anecdote.id, targets, discord_guild)
+        options = await build_mcq_options(db, anecdote)
+        view = McqView(anecdote.id, options)
         bot.add_view(view, message_id=anecdote.anecdote_message_id)
         restored += 1
 

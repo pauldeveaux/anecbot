@@ -25,7 +25,6 @@ async def test_wipe_guild_data_clears_everything_and_stops_game(db):
         db,
         guild_id=GUILD_ID,
         author_id=AUTHOR_ID,
-        target_id=TARGET_ID,
         content="anecdote",
         state=AnecdoteState.PUBLISHED,
     )
@@ -67,7 +66,6 @@ async def test_purge_guild_deletes_the_guild_row_and_everything_linked_to_it(db)
         db,
         guild_id=GUILD_ID,
         author_id=AUTHOR_ID,
-        target_id=TARGET_ID,
         content="anecdote",
         state=AnecdoteState.PUBLISHED,
     )
