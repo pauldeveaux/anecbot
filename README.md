@@ -35,6 +35,7 @@ Set via environment variables (`.env`, see `.env.example`):
 | `DATABASE_URL` | — (required) | PostgreSQL connection string |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | — (required) | Credentials for the `db` container (docker-compose only) |
 | `MIGRATIONS_DIR` | `migrations` | Directory of versioned SQL migration files |
+| `RELEASE_NOTES_PATH` | `RELEASE_NOTES.md` | Path to the file announced to guilds on startup when its content changes — see [Releases](#releases) |
 | `LOG_LEVEL` | `INFO` | Log verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`, ...); invalid values fall back to `INFO` |
 | `LOG_FILE` | `data/anecbot.log` | Log file path |
 
@@ -85,6 +86,13 @@ View logs:
 ```bash
 docker compose logs -f
 ```
+
+## Releases
+
+To announce a release to every server's publication channel, write the message in
+`RELEASE_NOTES.md` (repo root) before merging to `main`. On its next startup the bot posts that
+file's content to every guild with a channel configured, once per distinct message — leave it
+empty for a merge that shouldn't be announced.
 
 ## Logs
 

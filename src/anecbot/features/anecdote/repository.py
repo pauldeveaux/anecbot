@@ -20,11 +20,14 @@ async def count_created_today(
 async def has_any_for_user(
     db: psycopg.AsyncConnection, guild_id: int, user_id: int
 ) -> bool:
-    """Return whether the user has any anecdotes as author or target in the guild."""
+    """Return whether the user has authored any anecdote in the guild.
+
+    Targets are stored as frozen text labels in anecdote_choices, not as a live reference to a
+    player row, so being a past target never blocks a player row from being deleted.
+    """
     cursor = await db.execute(
-        "SELECT 1 FROM anecdotes WHERE guild_id = %s AND (author_id = %s OR target_id = %s) "
-        "LIMIT 1",
-        (guild_id, user_id, user_id),
+        "SELECT 1 FROM anecdotes WHERE guild_id = %s AND author_id = %s LIMIT 1",
+        (guild_id, user_id),
     )
     row = await cursor.fetchone()
     return row is not None

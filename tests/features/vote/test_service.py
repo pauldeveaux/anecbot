@@ -21,7 +21,7 @@ async def anecdote(db):
     await Player.upsert(db, GUILD_ID, AUTHOR_ID, can_submit=1)
     await Player.upsert(db, GUILD_ID, TARGET_ID, can_be_target=1)
     created = await Anecdote.create(
-        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
+        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, content="x"
     )
     return await Anecdote.update(db, created.id, state="PUBLISHED")
 
@@ -84,7 +84,7 @@ async def test_record_vote_rejected_when_not_published(db):
     await Player.upsert(db, GUILD_ID, AUTHOR_ID, can_submit=1)
     await Player.upsert(db, GUILD_ID, TARGET_ID, can_be_target=1)
     pending = await Anecdote.create(
-        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
+        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, content="x"
     )
 
     result = await record_vote(db, pending.id, VOTER_ID, TARGET_ID)

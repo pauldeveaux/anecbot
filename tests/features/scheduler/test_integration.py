@@ -3,6 +3,7 @@ from typing import cast
 import discord
 import pytest
 
+from anecbot.features.anecdote.service import create_anecdote, get_correct_choice
 from anecbot.features.scheduler.service import check_publications, check_reveals
 from anecbot.models.anecdote import Anecdote
 from anecbot.models.enums import GuildTimezone
@@ -44,9 +45,22 @@ class _FakeChannel:
         self.sent_embeds: list[discord.Embed | None] = []
         self._messages: dict[int, _FakeMessage] = {}
 
-    async def send(self, *, embed: discord.Embed | None = None) -> _FakeMessage:
-        """Record the send and return a fake message with a fixed id."""
-        self.sent_embeds.append(embed)
+    async def send(
+        self,
+        content: str | None = None,
+        *,
+        embed: discord.Embed | None = None,
+        embeds: list[discord.Embed] | None = None,
+        view: discord.ui.View | None = None,
+    ) -> _FakeMessage:
+        """Record the send and return a fake message with a fixed id.
+
+        Accepts both embed= (leaderboard) and embeds= (publisher), since this fake is shared
+        across the integration test exercising both.
+        """
+        self.sent_embeds.append(
+            embed if embed is not None else (embeds[0] if embeds else None)
+        )
         message = _FakeMessage(message_id=999)
         self._messages[message.id] = message
         return message
@@ -102,8 +116,8 @@ async def test_full_publish_vote_reveal_cycle(db):
     await Player.upsert(db, GUILD_ID, AUTHOR_ID, can_submit=1)
     await Player.upsert(db, GUILD_ID, TARGET_ID, can_be_target=1)
     await Player.upsert(db, GUILD_ID, VOTER_ID, can_submit=1)
-    await Anecdote.create(
-        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
+    await create_anecdote(
+        db, GUILD_ID, AUTHOR_ID, "x", target_label="Cible", choice_labels=["Autre"]
     )
     channel = _FakeChannel()
     bot = _FakeBot({CHANNEL_ID: channel})
@@ -115,7 +129,8 @@ async def test_full_publish_vote_reveal_cycle(db):
     assert len(published) == 1
     anecdote = published[0]
 
-    await Vote.upsert(db, anecdote.id, VOTER_ID, voted_for_id=TARGET_ID)
+    correct = await get_correct_choice(db, anecdote.id)
+    await Vote.upsert(db, anecdote.id, VOTER_ID, voted_for_id=correct.id)
 
     total_revealed = await check_reveals(cast(discord.Client, bot), db, utcnow())
     assert total_revealed == 1
@@ -130,7 +145,7 @@ async def test_full_publish_vote_reveal_cycle(db):
     assert voter_entry.points == 1
     author_entry = await LeaderboardEntry.get(db, GUILD_ID, AUTHOR_ID)
     assert author_entry is not None
-    assert author_entry.points == 1
+    assert author_entry.points == 0
 
     # embed 1 = the anecdote announcement, embed 2 = the post-reveal leaderboard
     assert len(channel.sent_embeds) == 2

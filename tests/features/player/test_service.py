@@ -200,12 +200,8 @@ async def test_cleanup_if_fully_removed_discards_pending_but_keeps_row_with_hist
     await Guild.upsert(db, GUILD_ID)
     await Player.upsert(db, GUILD_ID, 1, can_submit=0, can_be_target=0)
     await Player.upsert(db, GUILD_ID, 2, can_be_target=1)
-    pending = await Anecdote.create(
-        db, guild_id=GUILD_ID, author_id=1, target_id=2, content="x"
-    )
-    published = await Anecdote.create(
-        db, guild_id=GUILD_ID, author_id=1, target_id=2, content="y"
-    )
+    pending = await Anecdote.create(db, guild_id=GUILD_ID, author_id=1, content="x")
+    published = await Anecdote.create(db, guild_id=GUILD_ID, author_id=1, content="y")
     await Anecdote.update(db, published.id, state="PUBLISHED")
 
     await cleanup_if_fully_removed(db, GUILD_ID, 1)

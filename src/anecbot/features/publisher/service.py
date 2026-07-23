@@ -1,4 +1,5 @@
 import logging
+import random
 from datetime import datetime
 from typing import cast
 from zoneinfo import ZoneInfo
@@ -6,7 +7,7 @@ from zoneinfo import ZoneInfo
 import psycopg
 import discord
 
-from anecbot.features.player.service import get_active_targets
+from anecbot.features.anecdote.service import get_choices, get_media, resolve_media_urls
 from anecbot.features.publisher.views import McqView
 from anecbot.features.selector.service import select_pending_anecdote
 from anecbot.models.anecdote import Anecdote
@@ -23,21 +24,51 @@ from anecbot.utils.time import (
 logger = logging.getLogger(__name__)
 
 
+async def build_mcq_options(
+    db: psycopg.AsyncConnection, anecdote: Anecdote
+) -> list[tuple[str, int]]:
+    """Build the MCQ's (label, value) options from the anecdote's own choices, shuffled."""
+    choices = await get_choices(db, anecdote.id)
+    random.shuffle(choices)
+    return [(c.label, c.id) for c in choices]
+
+
 def build_anecdote_embed(
-    anecdote: Anecdote, reveal_at: datetime | None = None
-) -> discord.Embed:
-    """Build the embed announcing a new anecdote, with an optional reveal date."""
+    anecdote: Anecdote,
+    image_url: str | None = None,
+    reveal_at: datetime | None = None,
+) -> list[discord.Embed]:
+    """Build the embed(s) announcing a new anecdote, with an optional image and reveal date.
+
+    The reveal date lives in its own trailing embed rather than a field on the main one: a
+    Discord embed always renders its image below all of its fields, so putting the reveal date
+    as a field on the same embed as the image would push the image above the anecdote's own
+    text but below the reveal date — a second embed keeps the image directly under the text.
+    """
     embed = discord.Embed(title="📝 Nouvelle anecdote !", color=discord.Color.blue())
     embed.add_field(
         name=ZERO_WIDTH_SPACE, value=with_blank_lines(anecdote.content), inline=False
     )
+    if image_url is not None:
+        embed.set_image(url=image_url)
+    embeds = [embed]
     if reveal_at is not None:
-        embed.add_field(
+        reveal_embed = discord.Embed(color=discord.Color.blue())
+        reveal_embed.add_field(
             name="🔍 Révélation prévue",
             value=discord_timestamp_full_relative(reveal_at),
             inline=False,
         )
-    return embed
+        embeds.append(reveal_embed)
+    return embeds
+
+
+async def resolve_image_url(
+    bot: discord.Client, db: psycopg.AsyncConnection, anecdote_id: int
+) -> str | None:
+    """Return the anecdote's image url, if any, refreshed in case it's an attachment link."""
+    media_urls = await resolve_media_urls(bot, await get_media(db, anecdote_id))
+    return media_urls[0] if media_urls else None
 
 
 async def publish_next_anecdote(
@@ -59,8 +90,9 @@ async def publish_next_anecdote(
     channel = cast("discord.abc.Messageable | None", bot.get_channel(guild.channel_id))
     assert channel is not None
 
-    embed = build_anecdote_embed(anecdote)
-    message = await channel.send(embed=embed)
+    image_url = await resolve_image_url(bot, db, anecdote.id)
+    embeds = build_anecdote_embed(anecdote, image_url)
+    message = await channel.send(embeds=embeds)
 
     logger.info("Anecdote %s published for guild %s", anecdote.id, guild_id)
     return await Anecdote.update(
@@ -86,8 +118,6 @@ async def finish_publishing(
     bot: discord.Client, db: psycopg.AsyncConnection, guild: Guild, anecdote: Anecdote
 ) -> Anecdote:
     """Open voting on an already-RUNNING anecdote and transition it to PUBLISHED."""
-    discord_guild = bot.get_guild(guild.guild_id)
-    assert discord_guild is not None
     assert anecdote.anecdote_message_id is not None
     assert guild.channel_id is not None
 
@@ -105,10 +135,11 @@ async def finish_publishing(
         ZoneInfo(guild.timezone),
     )
 
-    targets = await get_active_targets(db, guild.guild_id)
-    view = McqView(anecdote.id, targets, discord_guild)
-    embed = build_anecdote_embed(anecdote, reveal_at)
-    await message.edit(embed=embed, view=view)
+    options = await build_mcq_options(db, anecdote)
+    view = McqView(anecdote.id, options)
+    image_url = await resolve_image_url(bot, db, anecdote.id)
+    embeds = build_anecdote_embed(anecdote, image_url, reveal_at)
+    await message.edit(embeds=embeds, view=view)
 
     return await Anecdote.update(
         db,
@@ -176,8 +207,9 @@ async def refresh_published_reveal_dates(
             published_at, guild.reveal_interval_days, guild.reveal_time, days_off, tz
         )
         message = await channel.fetch_message(anecdote.anecdote_message_id)
-        embed = build_anecdote_embed(anecdote, reveal_at)
-        await message.edit(embed=embed)
+        image_url = await resolve_image_url(bot, db, anecdote.id)
+        embeds = build_anecdote_embed(anecdote, image_url, reveal_at)
+        await message.edit(embeds=embeds)
 
 
 async def restore_active_views(
@@ -196,12 +228,11 @@ async def restore_active_views(
         guild = await Guild.get(db, anecdote.guild_id)
         if guild is None or guild.channel_id is None:
             continue
-        discord_guild = bot.get_guild(anecdote.guild_id)
-        if discord_guild is None:
+        if bot.get_guild(anecdote.guild_id) is None:
             continue
 
-        targets = await get_active_targets(db, anecdote.guild_id)
-        view = McqView(anecdote.id, targets, discord_guild)
+        options = await build_mcq_options(db, anecdote)
+        view = McqView(anecdote.id, options)
         bot.add_view(view, message_id=anecdote.anecdote_message_id)
         restored += 1
 

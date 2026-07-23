@@ -14,11 +14,9 @@ async def guild(db):
 
 
 @pytest_asyncio.fixture
-async def players(db, guild):
-    """Create two players for author/target references."""
-    author = await Player.upsert(db, 100, 1, can_submit=1)
-    target = await Player.upsert(db, 100, 2, can_be_target=1)
-    return author, target
+async def author(db, guild):
+    """Create an author player for anecdote references."""
+    return await Player.upsert(db, 100, 1, can_submit=1)
 
 
 @pytest.mark.asyncio
@@ -29,16 +27,15 @@ async def test_get_returns_none_when_missing(db, guild):
 
 
 @pytest.mark.asyncio
-async def test_create_with_defaults(db, players):
+async def test_create_with_defaults(db, author):
     """Anecdote.create creates row with default state and timestamps."""
     result = await Anecdote.create(
-        db, guild_id=100, author_id=1, target_id=2, content="Test anecdote"
+        db, guild_id=100, author_id=1, content="Test anecdote"
     )
     assert isinstance(result, Anecdote)
     assert result.id >= 1
     assert result.guild_id == 100
     assert result.author_id == 1
-    assert result.target_id == 2
     assert result.content == "Test anecdote"
     assert result.state == "PENDING"
     assert result.created_at != ""
@@ -47,23 +44,17 @@ async def test_create_with_defaults(db, players):
 
 
 @pytest.mark.asyncio
-async def test_create_autoincrement(db, players):
+async def test_create_autoincrement(db, author):
     """Anecdote.create assigns incrementing IDs."""
-    a1 = await Anecdote.create(
-        db, guild_id=100, author_id=1, target_id=2, content="First"
-    )
-    a2 = await Anecdote.create(
-        db, guild_id=100, author_id=1, target_id=2, content="Second"
-    )
+    a1 = await Anecdote.create(db, guild_id=100, author_id=1, content="First")
+    a2 = await Anecdote.create(db, guild_id=100, author_id=1, content="Second")
     assert a2.id == a1.id + 1
 
 
 @pytest.mark.asyncio
-async def test_upsert_updates_state(db, players):
+async def test_upsert_updates_state(db, author):
     """Anecdote.upsert updates state and published_at."""
-    anecdote = await Anecdote.create(
-        db, guild_id=100, author_id=1, target_id=2, content="Test"
-    )
+    anecdote = await Anecdote.create(db, guild_id=100, author_id=1, content="Test")
     updated = await Anecdote.update(
         db, anecdote.id, state="PUBLISHED", published_at="2026-01-01T12:00:00"
     )
@@ -78,12 +69,10 @@ async def test_list_by_guild(db):
     await Guild.upsert(db, 100)
     await Guild.upsert(db, 200)
     await Player.upsert(db, 100, 1, can_submit=1)
-    await Player.upsert(db, 100, 2, can_be_target=1)
     await Player.upsert(db, 200, 3, can_submit=1)
-    await Player.upsert(db, 200, 4, can_be_target=1)
 
-    await Anecdote.create(db, guild_id=100, author_id=1, target_id=2, content="A")
-    await Anecdote.create(db, guild_id=200, author_id=3, target_id=4, content="B")
+    await Anecdote.create(db, guild_id=100, author_id=1, content="A")
+    await Anecdote.create(db, guild_id=200, author_id=3, content="B")
 
     result = await Anecdote.list(db, guild_id=100)
     assert len(result) == 1
@@ -91,14 +80,10 @@ async def test_list_by_guild(db):
 
 
 @pytest.mark.asyncio
-async def test_list_by_state(db, players):
+async def test_list_by_state(db, author):
     """Anecdote.list filters by state."""
-    a1 = await Anecdote.create(
-        db, guild_id=100, author_id=1, target_id=2, content="Pending"
-    )
-    await Anecdote.create(
-        db, guild_id=100, author_id=1, target_id=2, content="Also pending"
-    )
+    a1 = await Anecdote.create(db, guild_id=100, author_id=1, content="Pending")
+    await Anecdote.create(db, guild_id=100, author_id=1, content="Also pending")
     await Anecdote.update(db, a1.id, state="PUBLISHED")
 
     pending = await Anecdote.list(db, state="PENDING")
@@ -107,11 +92,9 @@ async def test_list_by_state(db, players):
 
 
 @pytest.mark.asyncio
-async def test_delete_existing(db, players):
+async def test_delete_existing(db, author):
     """Anecdote.delete removes anecdote and returns True."""
-    anecdote = await Anecdote.create(
-        db, guild_id=100, author_id=1, target_id=2, content="Delete me"
-    )
+    anecdote = await Anecdote.create(db, guild_id=100, author_id=1, content="Delete me")
     assert await Anecdote.delete(db, anecdote.id) is True
     assert await Anecdote.get(db, anecdote.id) is None
 
@@ -126,35 +109,20 @@ async def test_delete_missing(db):
 async def test_fk_constraint_guild(db):
     """Creating anecdote for nonexistent guild fails."""
     with pytest.raises(psycopg.IntegrityError):
-        await Anecdote.create(db, guild_id=999, author_id=1, target_id=2, content="Bad")
+        await Anecdote.create(db, guild_id=999, author_id=1, content="Bad")
 
 
 @pytest.mark.asyncio
 async def test_fk_constraint_author(db, guild):
     """Creating anecdote with nonexistent author fails."""
-    await Player.upsert(db, 100, 2, can_be_target=1)
     with pytest.raises(psycopg.IntegrityError):
-        await Anecdote.create(
-            db, guild_id=100, author_id=999, target_id=2, content="Bad"
-        )
+        await Anecdote.create(db, guild_id=100, author_id=999, content="Bad")
 
 
 @pytest.mark.asyncio
-async def test_fk_constraint_target(db, guild):
-    """Creating anecdote with nonexistent target fails."""
-    await Player.upsert(db, 100, 1, can_submit=1)
-    with pytest.raises(psycopg.IntegrityError):
-        await Anecdote.create(
-            db, guild_id=100, author_id=1, target_id=999, content="Bad"
-        )
-
-
-@pytest.mark.asyncio
-async def test_cascade_delete_guild(db, players):
+async def test_cascade_delete_guild(db, author):
     """Deleting guild cascades to its anecdotes."""
-    await Anecdote.create(
-        db, guild_id=100, author_id=1, target_id=2, content="Cascade me"
-    )
+    await Anecdote.create(db, guild_id=100, author_id=1, content="Cascade me")
     await Guild.delete(db, 100)
     result = await Anecdote.list(db, guild_id=100)
     assert len(result) == 0

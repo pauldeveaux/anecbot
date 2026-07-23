@@ -1,6 +1,11 @@
 import discord
 
-from anecbot.features.stats.service import GuildStats, get_guild_stats
+from anecbot.features.stats.service import (
+    GuildStats,
+    build_player_stats_embed,
+    get_guild_stats,
+    get_player_stats,
+)
 from anecbot.utils.time import discord_timestamp
 
 
@@ -49,4 +54,13 @@ async def handle(interaction: discord.Interaction):
     db = interaction.client.db  # type: ignore[attr-defined]
     stats = await get_guild_stats(db, interaction.guild_id)
     embed = build_stats_embed(stats)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+async def handle_player(interaction: discord.Interaction, user: discord.Member):
+    """Show a single player's statistics for this guild."""
+    assert interaction.guild_id is not None
+    db = interaction.client.db  # type: ignore[attr-defined]
+    stats = await get_player_stats(db, interaction.guild_id, user.id)
+    embed = build_player_stats_embed(stats, user.display_name)
     await interaction.response.send_message(embed=embed, ephemeral=True)
