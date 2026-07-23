@@ -12,6 +12,7 @@ from anecbot.features.anecdote.service import backfill_migrated_target_labels
 from anecbot.features.leaderboard.service import restore_leaderboard_views
 from anecbot.features.lifecycle.service import purge_guild
 from anecbot.features.publisher.service import restore_active_views
+from anecbot.features.release_notes.service import announce_release_if_new
 from anecbot.features.scheduler.service import (
     check_leaderboard_resets,
     check_publications,
@@ -66,6 +67,9 @@ def create_bot(settings: Settings) -> Bot:
             await backfill_migrated_target_labels(bot, bot.db)
             await restore_active_views(bot, bot.db)
             await restore_leaderboard_views(bot, bot.db)
+            await announce_release_if_new(
+                bot, bot.db, Path(settings.release_notes_path)
+            )
             views_restored = True
 
     @bot.event

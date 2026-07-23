@@ -17,6 +17,7 @@ WORKDIR /app
 COPY --from=builder --chown=anecbot:anecbot /app/.venv /app/.venv
 COPY --chown=anecbot:anecbot src/ src/
 COPY --chown=anecbot:anecbot migrations/ migrations/
+COPY --chown=anecbot:anecbot RELEASE_NOTES.md ./
 
 USER anecbot
 ENV PATH="/app/.venv/bin:$PATH"
