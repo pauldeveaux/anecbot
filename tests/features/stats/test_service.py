@@ -39,12 +39,12 @@ async def test_stats_anecdote_counts(db):
     await _add_player(db, GUILD_ID, 1)
     await _add_player(db, GUILD_ID, 2)
 
-    await _add_anecdote(db, GUILD_ID, author=1, target=2, state="PENDING")
-    await _add_anecdote(db, GUILD_ID, author=1, target=2, state="PENDING")
-    await _add_anecdote(db, GUILD_ID, author=1, target=2, state="PUBLISHED")
-    await _add_anecdote(db, GUILD_ID, author=1, target=2, state="REVEALED")
-    await _add_anecdote(db, GUILD_ID, author=1, target=2, state="REVEALED")
-    await _add_anecdote(db, GUILD_ID, author=1, target=2, state="REVEALED")
+    await _add_anecdote(db, GUILD_ID, author=1, state="PENDING")
+    await _add_anecdote(db, GUILD_ID, author=1, state="PENDING")
+    await _add_anecdote(db, GUILD_ID, author=1, state="PUBLISHED")
+    await _add_anecdote(db, GUILD_ID, author=1, state="REVEALED")
+    await _add_anecdote(db, GUILD_ID, author=1, state="REVEALED")
+    await _add_anecdote(db, GUILD_ID, author=1, state="REVEALED")
 
     stats = await get_guild_stats(db, GUILD_ID)
     assert stats.anecdotes_total == 6
@@ -75,7 +75,7 @@ async def test_stats_isolated_by_guild(db):
     await Guild.upsert(db, other_guild)
     await _add_player(db, GUILD_ID, 1)
     await _add_player(db, other_guild, 2)
-    await _add_anecdote(db, other_guild, author=2, target=2, state="PENDING")
+    await _add_anecdote(db, other_guild, author=2, state="PENDING")
 
     stats = await get_guild_stats(db, GUILD_ID)
     assert stats.anecdotes_total == 0
@@ -99,12 +99,11 @@ async def _add_anecdote(
     db: psycopg.AsyncConnection,
     guild_id: int,
     author: int,
-    target: int,
     state: str = "PENDING",
 ):
     """Insert an anecdote row."""
     await db.execute(
-        "INSERT INTO anecdotes (guild_id, author_id, target_id, content, state) VALUES (%s, %s, %s, %s, %s)",
-        (guild_id, author, target, "test content", state),
+        "INSERT INTO anecdotes (guild_id, author_id, content, state) VALUES (%s, %s, %s, %s)",
+        (guild_id, author, "test content", state),
     )
     await db.commit()

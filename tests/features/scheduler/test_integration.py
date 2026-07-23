@@ -3,6 +3,7 @@ from typing import cast
 import discord
 import pytest
 
+from anecbot.features.anecdote.service import create_anecdote, get_correct_choice
 from anecbot.features.scheduler.service import check_publications, check_reveals
 from anecbot.models.anecdote import Anecdote
 from anecbot.models.enums import GuildTimezone
@@ -102,8 +103,8 @@ async def test_full_publish_vote_reveal_cycle(db):
     await Player.upsert(db, GUILD_ID, AUTHOR_ID, can_submit=1)
     await Player.upsert(db, GUILD_ID, TARGET_ID, can_be_target=1)
     await Player.upsert(db, GUILD_ID, VOTER_ID, can_submit=1)
-    await Anecdote.create(
-        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
+    await create_anecdote(
+        db, GUILD_ID, AUTHOR_ID, "x", target_label="Cible", choice_labels=["Autre"]
     )
     channel = _FakeChannel()
     bot = _FakeBot({CHANNEL_ID: channel})
@@ -115,7 +116,8 @@ async def test_full_publish_vote_reveal_cycle(db):
     assert len(published) == 1
     anecdote = published[0]
 
-    await Vote.upsert(db, anecdote.id, VOTER_ID, voted_for_id=TARGET_ID)
+    correct = await get_correct_choice(db, anecdote.id)
+    await Vote.upsert(db, anecdote.id, VOTER_ID, voted_for_id=correct.id)
 
     total_revealed = await check_reveals(cast(discord.Client, bot), db, utcnow())
     assert total_revealed == 1

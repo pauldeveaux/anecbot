@@ -7,7 +7,7 @@ from anecbot.models.vote import Vote
 
 
 async def record_vote(
-    db: psycopg.AsyncConnection, anecdote_id: int, voter_id: int, target_id: int
+    db: psycopg.AsyncConnection, anecdote_id: int, voter_id: int, voted_for_id: int
 ) -> VoteResult:
     """Record a vote for the anecdote, auto-registering the voter as a player if needed."""
     anecdote = await Anecdote.get(db, anecdote_id)
@@ -24,6 +24,6 @@ async def record_vote(
         )
 
     await Vote.upsert(
-        db, anecdote_id, voter_id, voted_for_id=target_id, guild_id=anecdote.guild_id
+        db, anecdote_id, voter_id, voted_for_id=voted_for_id, guild_id=anecdote.guild_id
     )
     return VoteResult.RECORDED

@@ -14,9 +14,7 @@ async def anecdote(db):
     await Guild.upsert(db, 100)
     await Player.upsert(db, 100, 1, can_submit=1)
     await Player.upsert(db, 100, 2, can_be_target=1)
-    return await Anecdote.create(
-        db, guild_id=100, author_id=1, target_id=2, content="Test anecdote"
-    )
+    return await Anecdote.create(db, guild_id=100, author_id=1, content="Test anecdote")
 
 
 @pytest.mark.asyncio

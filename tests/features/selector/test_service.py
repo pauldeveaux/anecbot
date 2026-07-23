@@ -39,7 +39,6 @@ async def _pending(
         db,
         guild_id=GUILD_ID,
         author_id=author_id,
-        target_id=TARGET_ID,
         content="x",
         created_at=created_at,
     )
@@ -50,7 +49,7 @@ async def _published(
 ) -> Anecdote:
     """Create a PUBLISHED anecdote with a fixed published_at."""
     created = await Anecdote.create(
-        db, guild_id=GUILD_ID, author_id=author_id, target_id=TARGET_ID, content="x"
+        db, guild_id=GUILD_ID, author_id=author_id, content="x"
     )
     return await Anecdote.update(
         db, created.id, state="PUBLISHED", published_at=published_at

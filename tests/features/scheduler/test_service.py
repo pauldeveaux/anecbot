@@ -7,6 +7,7 @@ import psycopg
 import pytest
 import pytest_asyncio
 
+from anecbot.features.anecdote.service import create_anecdote
 from anecbot.features.scheduler.service import (
     check_leaderboard_reset_for_guild,
     check_leaderboard_resets,
@@ -226,8 +227,8 @@ async def test_check_publication_for_guild_skips_when_not_due(db, players):
 @pytest.mark.asyncio
 async def test_check_publication_for_guild_triggers_when_due(db, players):
     """A due, started guild with a pending anecdote gets published."""
-    await Anecdote.create(
-        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
+    await create_anecdote(
+        db, GUILD_ID, AUTHOR_ID, "x", target_label="Cible", choice_labels=["Autre"]
     )
     guild = await Guild.get(db, GUILD_ID)
     assert guild is not None
@@ -248,8 +249,8 @@ async def test_check_publication_for_guild_triggers_when_due(db, players):
 @pytest.mark.asyncio
 async def test_check_publications_only_checks_started_guilds(db, players):
     """A stopped guild is skipped even if otherwise due."""
-    await Anecdote.create(
-        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
+    await create_anecdote(
+        db, GUILD_ID, AUTHOR_ID, "x", target_label="Cible", choice_labels=["Autre"]
     )
     await Guild.upsert(db, OTHER_GUILD_ID, channel_id=CHANNEL_ID, started=0)
     channel = _FakeChannel()
@@ -266,21 +267,20 @@ async def test_check_publications_only_checks_started_guilds(db, players):
 @pytest.mark.asyncio
 async def test_check_publications_continues_after_guild_failure(db, players):
     """A guild whose publish attempt raises doesn't stop other guilds from being checked."""
-    await Anecdote.create(
-        db, guild_id=GUILD_ID, author_id=AUTHOR_ID, target_id=TARGET_ID, content="boom"
-    )
+    await Anecdote.create(db, guild_id=GUILD_ID, author_id=AUTHOR_ID, content="boom")
     other_channel_id = 777
     await Guild.upsert(
         db, OTHER_GUILD_ID, channel_id=other_channel_id, started=1, publish_time="15:00"
     )
     await Player.upsert(db, OTHER_GUILD_ID, AUTHOR_ID, can_submit=1)
     await Player.upsert(db, OTHER_GUILD_ID, TARGET_ID, can_be_target=1)
-    await Anecdote.create(
+    await create_anecdote(
         db,
-        guild_id=OTHER_GUILD_ID,
-        author_id=AUTHOR_ID,
-        target_id=TARGET_ID,
-        content="ok",
+        OTHER_GUILD_ID,
+        AUTHOR_ID,
+        "ok",
+        target_label="Cible",
+        choice_labels=["Autre"],
     )
     other_channel = _FakeChannel()
     # GUILD_ID's own channel (CHANNEL_ID) is deliberately not registered with the fake bot,
@@ -304,9 +304,9 @@ async def _published_anecdote(
     message_id: int = 999,
     guild_id: int = GUILD_ID,
 ) -> Anecdote:
-    """Insert a PUBLISHED anecdote with a fixed published_at and message id."""
-    created = await Anecdote.create(
-        db, guild_id=guild_id, author_id=AUTHOR_ID, target_id=TARGET_ID, content="x"
+    """Insert a PUBLISHED anecdote (with its MCQ choices) with a fixed published_at/message id."""
+    created = await create_anecdote(
+        db, guild_id, AUTHOR_ID, "x", target_label="Cible", choice_labels=["Autre"]
     )
     return await Anecdote.update(
         db,

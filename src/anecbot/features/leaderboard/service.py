@@ -34,12 +34,16 @@ async def award_points(
     db: psycopg.AsyncConnection,
     guild_id: int,
     votes: list[Vote],
-    target_id: int,
+    correct_value: int,
     author_id: int,
 ) -> None:
-    """Award +1 to each correct voter and a flat +1 to the anecdote's author."""
+    """Award +1 to each correct voter and a flat +1 to the anecdote's author.
+
+    correct_value is a user_id in roster mode or an anecdote_choices.id in custom mode —
+    whatever Vote.voted_for_id means for this anecdote.
+    """
     for vote in votes:
-        if vote.voted_for_id == target_id:
+        if vote.voted_for_id == correct_value:
             await _add_points(db, guild_id, vote.user_id, 1)
     await _add_points(db, guild_id, author_id, 1)
 

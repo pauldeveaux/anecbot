@@ -5,6 +5,7 @@ import discord
 
 from anecbot.features.anecdote.service import (
     delete_anecdote,
+    get_correct_choice,
     get_owned_pending_anecdote,
     get_pending_by_author,
     update_content,
@@ -112,10 +113,12 @@ class AnecdoteBrowserView(NavigablePagesView):
         self,
         anecdotes: list[Anecdote],
         probabilities: dict[int, float],
+        target_labels: dict[int, str],
     ):
         """Store the anecdotes and their display data, one page per anecdote."""
         self.anecdotes = anecdotes
         self.probabilities = probabilities
+        self.target_labels = target_labels
         super().__init__(timeout=180)
 
     @property
@@ -129,8 +132,8 @@ class AnecdoteBrowserView(NavigablePagesView):
         return self.anecdotes[self.page]
 
     def _target_field(self, anecdote: Anecdote) -> str:
-        """Return a clickable mention of the anecdote's target."""
-        return f"<@{anecdote.target_id}>"
+        """Return the anecdote's target display label."""
+        return self.target_labels.get(anecdote.id, "?")
 
     def build_embed(self) -> discord.Embed:
         """Build the embed for the current anecdote."""
@@ -212,7 +215,12 @@ async def _show_browser(
     # restricted to this author's own anecdotes), then narrowed down to the ones shown here.
     probabilities = await compute_selection_probabilities(db, guild_id, utcnow())
 
-    view = AnecdoteBrowserView(anecdotes, probabilities)
+    target_labels = {
+        anecdote.id: (await get_correct_choice(db, anecdote.id)).label
+        for anecdote in anecdotes
+    }
+
+    view = AnecdoteBrowserView(anecdotes, probabilities, target_labels)
     if edit:
         await interaction.response.edit_message(embed=view.build_embed(), view=view)
     else:

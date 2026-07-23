@@ -41,7 +41,6 @@ async def _anecdote(
         db,
         guild_id=guild_id,
         author_id=author_id,
-        target_id=TARGET_ID,
         content="x",
     )
     if state != "PENDING":

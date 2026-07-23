@@ -120,7 +120,7 @@ async def test_delete_fails_when_referenced_by_anecdote(db, guild):
     """
     await Player.upsert(db, 100, 1)
     await Player.upsert(db, 100, 2)
-    await Anecdote.create(db, guild_id=100, author_id=1, target_id=2, content="x")
+    await Anecdote.create(db, guild_id=100, author_id=1, content="x")
 
     with pytest.raises(psycopg.IntegrityError):
         await Player.delete(db, 100, 1)

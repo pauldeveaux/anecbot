@@ -74,9 +74,7 @@ async def test_publication_after_previous(db):
     )
     await _add_player(db, GUILD_ID, 1)
     await _add_player(db, GUILD_ID, 2)
-    await _add_published_anecdote(
-        db, GUILD_ID, 1, 2, "2026-07-14T15:00:00", "PUBLISHED"
-    )
+    await _add_published_anecdote(db, GUILD_ID, 1, "2026-07-14T15:00:00", "PUBLISHED")
 
     now = datetime(2026, 7, 14, 16, 0)
     events = await get_next_events(db, GUILD_ID, now)
@@ -98,9 +96,7 @@ async def test_reveal_after_publish_mode(db):
     )
     await _add_player(db, GUILD_ID, 1)
     await _add_player(db, GUILD_ID, 2)
-    await _add_published_anecdote(
-        db, GUILD_ID, 1, 2, "2026-07-14T15:00:00", "PUBLISHED"
-    )
+    await _add_published_anecdote(db, GUILD_ID, 1, "2026-07-14T15:00:00", "PUBLISHED")
 
     now = datetime(2026, 7, 14, 16, 0)
     events = await get_next_events(db, GUILD_ID, now)
@@ -188,8 +184,8 @@ async def test_revealed_anecdotes_count_for_last_published(db):
     )
     await _add_player(db, GUILD_ID, 1)
     await _add_player(db, GUILD_ID, 2)
-    await _add_published_anecdote(db, GUILD_ID, 1, 2, "2026-07-13T15:00:00", "REVEALED")
-    await _add_published_anecdote(db, GUILD_ID, 1, 2, "2026-07-14T15:00:00", "REVEALED")
+    await _add_published_anecdote(db, GUILD_ID, 1, "2026-07-13T15:00:00", "REVEALED")
+    await _add_published_anecdote(db, GUILD_ID, 1, "2026-07-14T15:00:00", "REVEALED")
 
     now = datetime(2026, 7, 14, 16, 0)
     events = await get_next_events(db, GUILD_ID, now)
@@ -211,9 +207,7 @@ async def test_publication_overdue_when_queue_empty_and_past_publish_time(db):
     )
     await _add_player(db, GUILD_ID, 1)
     await _add_player(db, GUILD_ID, 2)
-    await _add_published_anecdote(
-        db, GUILD_ID, 1, 2, "2026-07-01T15:00:00", "PUBLISHED"
-    )
+    await _add_published_anecdote(db, GUILD_ID, 1, "2026-07-01T15:00:00", "PUBLISHED")
 
     before_time = datetime(2026, 7, 14, 10, 0)
     after_time = datetime(2026, 7, 14, 16, 0)
@@ -240,12 +234,8 @@ async def test_publication_not_overdue_when_anecdotes_pending(db):
     )
     await _add_player(db, GUILD_ID, 1)
     await _add_player(db, GUILD_ID, 2)
-    await _add_published_anecdote(
-        db, GUILD_ID, 1, 2, "2026-07-01T15:00:00", "PUBLISHED"
-    )
-    await Anecdote.create(
-        db, guild_id=GUILD_ID, author_id=1, target_id=2, content="pending"
-    )
+    await _add_published_anecdote(db, GUILD_ID, 1, "2026-07-01T15:00:00", "PUBLISHED")
+    await Anecdote.create(db, guild_id=GUILD_ID, author_id=1, content="pending")
 
     now = datetime(2026, 7, 14, 16, 0)
     events = await get_next_events(db, GUILD_ID, now)
@@ -261,14 +251,13 @@ async def _add_published_anecdote(
     db: psycopg.AsyncConnection,
     guild_id: int,
     author: int,
-    target: int,
     published_at: str,
     state: str,
 ):
     """Insert an anecdote with a published_at timestamp."""
     await db.execute(
-        "INSERT INTO anecdotes (guild_id, author_id, target_id, content, state, published_at) "
-        "VALUES (%s, %s, %s, %s, %s, %s)",
-        (guild_id, author, target, "test", state, published_at),
+        "INSERT INTO anecdotes (guild_id, author_id, content, state, published_at) "
+        "VALUES (%s, %s, %s, %s, %s)",
+        (guild_id, author, "test", state, published_at),
     )
     await db.commit()
