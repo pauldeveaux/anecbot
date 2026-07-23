@@ -26,11 +26,28 @@ class GeneralCog(commands.Cog):
         """Show the game rules."""
         await rules_handler.handle(interaction)
 
-    @app_commands.command(name="stats", description="Afficher les statistiques du jeu")
+    stats = app_commands.Group(
+        name="stats", description="Statistiques du jeu ou d'un joueur"
+    )
+
+    @stats.command(name="game", description="Afficher les statistiques du jeu")
     @app_commands.guild_only()
-    async def stats(self, interaction: discord.Interaction):
+    async def stats_game(self, interaction: discord.Interaction):
         """Show game statistics."""
         await stats_handler.handle(interaction)
+
+    @stats.command(name="player", description="Afficher les statistiques d'un joueur")
+    @app_commands.guild_only()
+    @app_commands.describe(user="Le joueur à consulter (toi-même si non précisé)")
+    async def stats_player(
+        self,
+        interaction: discord.Interaction,
+        user: discord.Member | None = None,
+    ):
+        """Show a single player's statistics."""
+        target = user or interaction.user
+        assert isinstance(target, discord.Member)
+        await stats_handler.handle_player(interaction, target)
 
     @app_commands.command(
         name="next", description="Afficher les prochains événements prévus"

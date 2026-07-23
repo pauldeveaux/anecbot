@@ -53,6 +53,15 @@ async def award_points(
     await _add_points(db, guild_id, author_id, quality_bonus(quality_ratings))
 
 
+def rank_of(entries: list[LeaderboardEntry], user_id: int) -> int | None:
+    """Return the user's 1-indexed rank among the entries, or None if they have no entry."""
+    ranked = sorted(entries, key=lambda e: e.points, reverse=True)
+    for rank, entry in enumerate(ranked, start=1):
+        if entry.user_id == user_id:
+            return rank
+    return None
+
+
 def build_leaderboard_embed(
     entries: list[LeaderboardEntry],
     players: dict[int, Player],

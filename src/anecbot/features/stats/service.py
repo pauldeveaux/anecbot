@@ -2,10 +2,17 @@ from dataclasses import dataclass
 
 import psycopg
 
+from anecbot.features.leaderboard.service import rank_of
+from anecbot.features.stats.repository import (
+    average_quality_rating,
+    count_correct_votes,
+)
 from anecbot.models.anecdote import Anecdote
 from anecbot.models.enums import AnecdoteState
 from anecbot.models.guild import Guild
+from anecbot.models.leaderboard import LeaderboardEntry
 from anecbot.models.player import Player
+from anecbot.models.vote import Vote
 
 
 @dataclass
@@ -52,4 +59,41 @@ async def get_guild_stats(db: psycopg.AsyncConnection, guild_id: int) -> GuildSt
         players_submitters=players_submitters,
         players_targets=players_targets,
         players_total=players_total,
+    )
+
+
+@dataclass
+class PlayerStats:
+    """Aggregated statistics for a single player in a guild."""
+
+    points: int
+    rank: int | None
+    revealed_count: int
+    average_rating: float | None
+    votes_cast: int
+    correct_votes: int
+    accuracy_pct: float | None
+
+
+async def get_player_stats(
+    db: psycopg.AsyncConnection, guild_id: int, user_id: int
+) -> PlayerStats:
+    """Compute a single player's points, rank, anecdote quality, and voting accuracy."""
+    entries = await LeaderboardEntry.list(db, guild_id=guild_id)
+    entry = next((e for e in entries if e.user_id == user_id), None)
+
+    revealed_count = await Anecdote.count(
+        db, guild_id=guild_id, author_id=user_id, state=AnecdoteState.REVEALED
+    )
+    votes_cast = await Vote.count(db, guild_id=guild_id, user_id=user_id)
+    correct_votes = await count_correct_votes(db, guild_id, user_id)
+
+    return PlayerStats(
+        points=entry.points if entry else 0,
+        rank=rank_of(entries, user_id),
+        revealed_count=revealed_count,
+        average_rating=await average_quality_rating(db, guild_id, user_id),
+        votes_cast=votes_cast,
+        correct_votes=correct_votes,
+        accuracy_pct=(correct_votes / votes_cast * 100) if votes_cast else None,
     )
