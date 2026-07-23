@@ -10,6 +10,7 @@ from anecbot.features.leaderboard.repository import (
     delete_all_entries,
     mark_leaderboard_published,
 )
+from anecbot.features.quality_vote.service import quality_bonus
 from anecbot.models.guild import Guild
 from anecbot.models.leaderboard import LeaderboardEntry
 from anecbot.models.player import Player
@@ -24,10 +25,12 @@ MAX_LEADERBOARD_ENTRIES = 20
 async def _add_points(
     db: psycopg.AsyncConnection, guild_id: int, user_id: int, points: int
 ) -> None:
-    """Increment a user's leaderboard points by the given amount."""
+    """Increment a user's leaderboard points by the given amount, floored at 0."""
     entry = await LeaderboardEntry.get(db, guild_id, user_id)
     current = entry.points if entry else 0
-    await LeaderboardEntry.upsert(db, guild_id, user_id, points=current + points)
+    await LeaderboardEntry.upsert(
+        db, guild_id, user_id, points=max(0, current + points)
+    )
 
 
 async def award_points(
@@ -36,16 +39,18 @@ async def award_points(
     votes: list[Vote],
     correct_value: int,
     author_id: int,
+    quality_ratings: list[int],
 ) -> None:
-    """Award +1 to each correct voter and a flat +1 to the anecdote's author.
+    """Award +1 to each correct voter and a quality-based bonus to the anecdote's author.
 
     correct_value is a user_id in roster mode or an anecdote_choices.id in custom mode —
-    whatever Vote.voted_for_id means for this anecdote.
+    whatever Vote.voted_for_id means for this anecdote. The author's bonus is derived from
+    quality_ratings via quality_vote.service.quality_bonus — 0 if no quality votes were cast.
     """
     for vote in votes:
         if vote.voted_for_id == correct_value:
             await _add_points(db, guild_id, vote.user_id, 1)
-    await _add_points(db, guild_id, author_id, 1)
+    await _add_points(db, guild_id, author_id, quality_bonus(quality_ratings))
 
 
 def build_leaderboard_embed(

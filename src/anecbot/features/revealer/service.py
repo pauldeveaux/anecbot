@@ -8,12 +8,14 @@ import discord
 
 from anecbot.features.anecdote.service import get_choices
 from anecbot.features.leaderboard.service import award_points, publish_leaderboard
+from anecbot.features.quality_vote.service import quality_bonus
 from anecbot.features.revealer.repository import claim_points_award
 from anecbot.models.anecdote import Anecdote
 from anecbot.models.anecdote_choice import AnecdoteChoice
 from anecbot.models.enums import AnecdoteState
 from anecbot.models.guild import Guild
 from anecbot.models.player import Player
+from anecbot.models.quality_vote import QualityVote
 from anecbot.models.vote import Vote
 from anecbot.utils.player import display_name
 from anecbot.utils.text import ZERO_WIDTH_SPACE, with_blank_lines
@@ -55,6 +57,7 @@ async def get_due_reveals(
 def build_reveal_embed(
     anecdote: Anecdote,
     votes: list[Vote],
+    quality_votes: list[QualityVote],
     players: dict[int, Player],
     discord_guild: discord.Guild | None,
     choices: list[AnecdoteChoice],
@@ -62,7 +65,8 @@ def build_reveal_embed(
     """Build the embed showing the anecdote's content, votes summary, and spoiler answer.
 
     The target and each guessed option are resolved through the anecdote's own choices, not
-    the players dict (which only resolves voters' display names — real Discord users).
+    the players dict (which only resolves voters' display names — real Discord users). Each
+    voter's guess and quality rating are merged onto a single line when they cast both.
     """
     embed = discord.Embed(title="🔍 Révélation !", color=discord.Color.purple())
     embed.add_field(
@@ -74,16 +78,27 @@ def build_reveal_embed(
     correct_value = correct.id
     target_name = correct.label
 
-    if votes:
-        lines = []
-        for vote in votes:
-            voter = players.get(vote.user_id)
-            voter_name = (
-                display_name(voter, discord_guild) if voter else str(vote.user_id)
-            )
+    vote_by_user = {v.user_id: v for v in votes}
+    rating_by_user = {qv.user_id: qv.rating for qv in quality_votes}
+    voter_ids = [*vote_by_user, *(u for u in rating_by_user if u not in vote_by_user)]
+
+    lines = []
+    for user_id in voter_ids:
+        voter = players.get(user_id)
+        voter_name = display_name(voter, discord_guild) if voter else str(user_id)
+        vote = vote_by_user.get(user_id)
+        rating = rating_by_user.get(user_id)
+        if vote is not None:
             guessed_name = choice_labels.get(vote.voted_for_id, str(vote.voted_for_id))
             mark = "✅" if vote.voted_for_id == correct_value else "❌"
-            lines.append(f"{mark} {voter_name} → {guessed_name}")
+            line = f"{mark} {voter_name} → {guessed_name}"
+            if rating is not None:
+                line += f" · ⭐ {rating}/5"
+        else:
+            line = f"{voter_name} · ⭐ {rating}/5"
+        lines.append(line)
+
+    if lines:
         votes_value = "\n".join(lines)
         if len(votes_value) > MAX_VOTES_FIELD_LENGTH:
             correct_count = sum(1 for v in votes if v.voted_for_id == correct_value)
@@ -99,6 +114,15 @@ def build_reveal_embed(
         display_name(author, discord_guild) if author else str(anecdote.author_id)
     )
     embed.add_field(name="✍️ Auteur", value=author_name, inline=True)
+
+    ratings = [qv.rating for qv in quality_votes]
+    if ratings:
+        average = sum(ratings) / len(ratings)
+        bonus = quality_bonus(ratings)
+        average_value = (
+            f"{average:.1f}/5 ({len(ratings)} vote(s)) → {bonus:+d} pt(s) auteur"
+        )
+        embed.add_field(name="⭐ Note moyenne", value=average_value, inline=False)
 
     return embed
 
@@ -123,6 +147,8 @@ async def reveal_anecdote(
     message = await channel.fetch_message(anecdote.anecdote_message_id)
 
     votes = await Vote.list(db, anecdote_id=anecdote.id)
+    quality_votes = await QualityVote.list(db, anecdote_id=anecdote.id)
+    quality_ratings = [qv.rating for qv in quality_votes]
     players = {p.user_id: p for p in await Player.list(db, guild_id=anecdote.guild_id)}
     discord_guild = bot.get_guild(anecdote.guild_id)
 
@@ -133,13 +159,20 @@ async def reveal_anecdote(
         await message.edit(view=None)
         if await claim_points_award(db, anecdote.id):
             await award_points(
-                db, anecdote.guild_id, votes, correct_value, anecdote.author_id
+                db,
+                anecdote.guild_id,
+                votes,
+                correct_value,
+                anecdote.author_id,
+                quality_ratings,
             )
         anecdote = await Anecdote.update(db, anecdote.id, state=AnecdoteState.REVEALING)
         logger.info("Anecdote %s revealed for guild %s", anecdote.id, anecdote.guild_id)
 
     if anecdote.reveal_message_id is None:
-        embed = build_reveal_embed(anecdote, votes, players, discord_guild, choices)
+        embed = build_reveal_embed(
+            anecdote, votes, quality_votes, players, discord_guild, choices
+        )
         reply = await message.reply(embed=embed)
         anecdote = await Anecdote.update(db, anecdote.id, reveal_message_id=reply.id)
 
