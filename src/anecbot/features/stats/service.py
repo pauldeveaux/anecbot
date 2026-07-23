@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 
+import discord
 import psycopg
 
-from anecbot.features.leaderboard.service import rank_of
 from anecbot.features.stats.repository import (
     average_quality_rating,
     count_correct_votes,
@@ -10,7 +10,7 @@ from anecbot.features.stats.repository import (
 from anecbot.models.anecdote import Anecdote
 from anecbot.models.enums import AnecdoteState
 from anecbot.models.guild import Guild
-from anecbot.models.leaderboard import LeaderboardEntry
+from anecbot.models.leaderboard import LeaderboardEntry, rank_of
 from anecbot.models.player import Player
 from anecbot.models.vote import Vote
 
@@ -97,3 +97,42 @@ async def get_player_stats(
         correct_votes=correct_votes,
         accuracy_pct=(correct_votes / votes_cast * 100) if votes_cast else None,
     )
+
+
+def build_player_stats_embed(stats: PlayerStats, name: str) -> discord.Embed:
+    """Build an embed with a single player's points, rank, and voting/anecdote statistics."""
+    embed = discord.Embed(
+        title=f"Statistiques de {name}",
+        color=discord.Color.blue(),
+    )
+
+    rank_value = f"{stats.rank}ᵉ" if stats.rank is not None else "Non classé"
+    embed.add_field(
+        name="🏆 Classement",
+        value=f"**{stats.points}** pt(s) — {rank_value}",
+        inline=False,
+    )
+
+    rating_value = (
+        f"{stats.average_rating:.1f}/5" if stats.average_rating is not None else "—"
+    )
+    embed.add_field(
+        name="✍️ Anecdotes révélée(s)",
+        value=f"Total : {stats.revealed_count}\nNote moyenne : {rating_value}",
+        inline=False,
+    )
+
+    accuracy_value = (
+        f"{stats.accuracy_pct:.0f}%" if stats.accuracy_pct is not None else "—"
+    )
+    embed.add_field(
+        name="🗳️ Votes",
+        value=(
+            f"Votes : {stats.votes_cast}\n"
+            f"Votes corrects : {stats.correct_votes}\n"
+            f"Précision : {accuracy_value}"
+        ),
+        inline=False,
+    )
+
+    return embed
