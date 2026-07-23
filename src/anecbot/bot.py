@@ -9,6 +9,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 from anecbot.features.anecdote.service import backfill_migrated_target_labels
+from anecbot.features.leaderboard.service import restore_leaderboard_views
 from anecbot.features.lifecycle.service import purge_guild
 from anecbot.features.publisher.service import restore_active_views
 from anecbot.features.scheduler.service import (
@@ -64,6 +65,7 @@ def create_bot(settings: Settings) -> Bot:
         if not views_restored:
             await backfill_migrated_target_labels(bot, bot.db)
             await restore_active_views(bot, bot.db)
+            await restore_leaderboard_views(bot, bot.db)
             views_restored = True
 
     @bot.event

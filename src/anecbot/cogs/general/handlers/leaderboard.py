@@ -1,17 +1,44 @@
 import discord
 
-from anecbot.features.leaderboard.service import build_leaderboard_embed
-from anecbot.models.leaderboard import LeaderboardEntry
+from anecbot.features.leaderboard.service import (
+    build_player_entries,
+    build_ranked_embed,
+    get_ranked_entries,
+)
+from anecbot.features.leaderboard.views import LeaderboardPlayerButtonsView
+from anecbot.models.enums import LeaderboardKind
 from anecbot.models.player import Player
 
+TITLES = {
+    LeaderboardKind.POINTS: "🏆 Classement — Points",
+    LeaderboardKind.ACCURACY: "🎯 Classement — Précision",
+    LeaderboardKind.PUBLISHED: "✍️ Classement — Anecdotes révélées",
+    LeaderboardKind.VOTES: "🗳️ Classement — Votes",
+}
 
-async def handle(interaction: discord.Interaction):
-    """Show the current leaderboard standings."""
+EMPTY_MESSAGES = {
+    LeaderboardKind.POINTS: "Aucun point pour l'instant.",
+    LeaderboardKind.ACCURACY: "Aucun vote pour l'instant.",
+    LeaderboardKind.PUBLISHED: "Aucune anecdote révélée pour l'instant.",
+    LeaderboardKind.VOTES: "Aucun vote pour l'instant.",
+}
+
+
+async def handle(interaction: discord.Interaction, kind: LeaderboardKind):
+    """Show the leaderboard ranked by the given kind, with a per-player stats button."""
     assert interaction.guild_id is not None
     db = interaction.client.db  # type: ignore[attr-defined]
-    entries = await LeaderboardEntry.list(db, guild_id=interaction.guild_id)
+    rows = await get_ranked_entries(db, interaction.guild_id, kind)
     players = {
         p.user_id: p for p in await Player.list(db, guild_id=interaction.guild_id)
     }
-    embed = build_leaderboard_embed(entries, players, interaction.guild)
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    embed = build_ranked_embed(TITLES[kind], rows, EMPTY_MESSAGES[kind])
+    player_entries = build_player_entries(rows, players, interaction.guild)
+    view = (
+        LeaderboardPlayerButtonsView(interaction.guild_id, player_entries)
+        if player_entries
+        else None
+    )
+    await interaction.response.send_message(
+        embed=embed, view=view or discord.utils.MISSING, ephemeral=True
+    )

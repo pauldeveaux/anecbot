@@ -3,7 +3,7 @@ import psycopg
 import pytest_asyncio
 
 from anecbot.models.guild import Guild
-from anecbot.models.leaderboard import LeaderboardEntry
+from anecbot.models.leaderboard import LeaderboardEntry, rank_of
 
 
 @pytest_asyncio.fixture
@@ -80,3 +80,34 @@ async def test_cascade_delete_guild(db, guild):
     await Guild.delete(db, 100)
     entries = await LeaderboardEntry.list(db, guild_id=100)
     assert len(entries) == 0
+
+
+def test_rank_of_orders_by_points_descending():
+    """A user's rank reflects their position when entries are sorted by points."""
+    entries = [
+        LeaderboardEntry(guild_id=100, user_id=1, points=3),
+        LeaderboardEntry(guild_id=100, user_id=2, points=10),
+        LeaderboardEntry(guild_id=100, user_id=3, points=7),
+    ]
+
+    assert rank_of(entries, 2) == 1
+    assert rank_of(entries, 3) == 2
+    assert rank_of(entries, 1) == 3
+
+
+def test_rank_of_returns_none_when_user_has_no_entry():
+    """A user absent from the entries has no rank."""
+    entries = [LeaderboardEntry(guild_id=100, user_id=1, points=3)]
+
+    assert rank_of(entries, 999) is None
+
+
+def test_rank_of_breaks_ties_by_stable_input_order():
+    """Tied points keep the relative order they were given in (stable sort), same as the embed."""
+    entries = [
+        LeaderboardEntry(guild_id=100, user_id=1, points=5),
+        LeaderboardEntry(guild_id=100, user_id=2, points=5),
+    ]
+
+    assert rank_of(entries, 1) == 1
+    assert rank_of(entries, 2) == 2

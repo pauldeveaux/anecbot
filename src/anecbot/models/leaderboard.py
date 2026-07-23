@@ -14,3 +14,12 @@ class LeaderboardEntry(Model):
     guild_id: int = 0
     user_id: int = 0
     points: int = 0
+
+
+def rank_of(entries: list[LeaderboardEntry], user_id: int) -> int | None:
+    """Return the user's 1-indexed rank among the entries, or None if they have no entry."""
+    ranked = sorted(entries, key=lambda e: e.points, reverse=True)
+    for rank, entry in enumerate(ranked, start=1):
+        if entry.user_id == user_id:
+            return rank
+    return None

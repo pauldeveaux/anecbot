@@ -5,14 +5,20 @@ import discord
 import pytest
 import pytest_asyncio
 
+from anecbot.features.anecdote.service import create_anecdote, get_choices
 from anecbot.features.leaderboard.service import (
     MAX_LEADERBOARD_ENTRIES,
     award_points,
     build_leaderboard_embed,
+    build_player_entries,
+    build_ranked_embed,
+    get_ranked_entries,
     publish_leaderboard,
-    rank_of,
     reset_leaderboard,
+    restore_leaderboard_views,
 )
+from anecbot.models.anecdote import Anecdote
+from anecbot.models.enums import AnecdoteState, LeaderboardKind
 from anecbot.models.guild import Guild
 from anecbot.models.leaderboard import LeaderboardEntry
 from anecbot.models.player import Player
@@ -34,30 +40,47 @@ class _FakeMessage:
 
 
 class _FakeChannel:
-    """Stand-in for a Messageable channel — records sent embeds."""
+    """Stand-in for a Messageable channel — records sent embeds and views."""
 
     def __init__(self):
         self.sent_embeds: list[discord.Embed | None] = []
+        self.sent_views: list[discord.ui.View | None] = []
 
-    async def send(self, *, embed: discord.Embed | None = None) -> _FakeMessage:
-        """Record the sent embed."""
+    async def send(
+        self,
+        *,
+        embed: discord.Embed | None = None,
+        view: discord.ui.View | None = None,
+    ) -> _FakeMessage:
+        """Record the sent embed and view."""
         self.sent_embeds.append(embed)
+        self.sent_views.append(view)
         return _FakeMessage(message_id=999)
 
 
 class _FakeBot:
-    """Stand-in for discord.Client — get_channel/get_guild are used by the service."""
+    """Stand-in for discord.Client — get_channel/get_guild/add_view are used by the service."""
 
-    def __init__(self, channels: dict[int, _FakeChannel]):
+    def __init__(
+        self,
+        channels: dict[int, _FakeChannel],
+        guilds: dict[int, object] | None = None,
+    ):
         self._channels = channels
+        self._guilds = guilds or {}
+        self.added_views: list[tuple[discord.ui.View, int | None]] = []
 
     def get_channel(self, channel_id: int):
         """Return the fake channel for the given id, or None."""
         return self._channels.get(channel_id)
 
     def get_guild(self, guild_id: int):
-        """No fake discord.Guild needed for these tests."""
-        return None
+        """Return the fake guild registered for the given id, or None."""
+        return self._guilds.get(guild_id)
+
+    def add_view(self, view: discord.ui.View, *, message_id: int | None = None):
+        """Record a persistent view registration."""
+        self.added_views.append((view, message_id))
 
 
 class _FakeMember:
@@ -151,82 +174,34 @@ async def test_award_points_floors_at_zero(db, guild):
     assert author_entry.points == 0
 
 
-def test_rank_of_orders_by_points_descending():
-    """A user's rank reflects their position when entries are sorted by points."""
-    entries = [
-        LeaderboardEntry(guild_id=GUILD_ID, user_id=1, points=3),
-        LeaderboardEntry(guild_id=GUILD_ID, user_id=2, points=10),
-        LeaderboardEntry(guild_id=GUILD_ID, user_id=3, points=7),
-    ]
-
-    assert rank_of(entries, 2) == 1
-    assert rank_of(entries, 3) == 2
-    assert rank_of(entries, 1) == 3
-
-
-def test_rank_of_returns_none_when_user_has_no_entry():
-    """A user absent from the entries has no rank."""
-    entries = [LeaderboardEntry(guild_id=GUILD_ID, user_id=1, points=3)]
-
-    assert rank_of(entries, 999) is None
-
-
-def test_rank_of_breaks_ties_by_stable_input_order():
-    """Tied points keep the relative order they were given in (stable sort), same as the embed."""
-    entries = [
-        LeaderboardEntry(guild_id=GUILD_ID, user_id=1, points=5),
-        LeaderboardEntry(guild_id=GUILD_ID, user_id=2, points=5),
-    ]
-
-    assert rank_of(entries, 1) == 1
-    assert rank_of(entries, 2) == 2
-
-
-def test_build_leaderboard_embed_ranks_by_points_descending():
-    """Entries are shown ranked from highest to lowest points."""
+def test_build_leaderboard_embed_no_overflow_has_no_description():
+    """With every entry shown, the header embed carries no per-row description text."""
     entries = [
         LeaderboardEntry(guild_id=GUILD_ID, user_id=1, points=3),
         LeaderboardEntry(guild_id=GUILD_ID, user_id=2, points=10),
     ]
-    players = {
-        1: Player(guild_id=GUILD_ID, user_id=1),
-        2: Player(guild_id=GUILD_ID, user_id=2),
-    }
-    guild = _FakeGuild({1: _FakeMember("Alice"), 2: _FakeMember("Bob")})
 
-    embed = build_leaderboard_embed(entries, players, cast(discord.Guild, guild))
+    embed = build_leaderboard_embed(entries)
 
-    assert embed.description is not None
-    lines = embed.description.split("\n")
-    assert lines[0].startswith("**1.** Bob")
-    assert lines[1].startswith("**2.** Alice")
+    assert embed.title == "🏆 Classement"
+    assert embed.description is None
 
 
 def test_build_leaderboard_embed_caps_to_top_n():
-    """Beyond MAX_LEADERBOARD_ENTRIES, a trailing count note is shown instead of more rows."""
+    """Beyond MAX_LEADERBOARD_ENTRIES, a trailing count note is shown in the description."""
     entries = [
         LeaderboardEntry(guild_id=GUILD_ID, user_id=i, points=i)
         for i in range(MAX_LEADERBOARD_ENTRIES + 5)
     ]
-    players = {
-        i: Player(guild_id=GUILD_ID, user_id=i)
-        for i in range(MAX_LEADERBOARD_ENTRIES + 5)
-    }
-    guild = _FakeGuild(
-        {i: _FakeMember(f"Joueur{i}") for i in range(MAX_LEADERBOARD_ENTRIES + 5)}
-    )
 
-    embed = build_leaderboard_embed(entries, players, cast(discord.Guild, guild))
+    embed = build_leaderboard_embed(entries)
 
-    assert embed.description is not None
-    lines = embed.description.split("\n")
-    assert len(lines) == MAX_LEADERBOARD_ENTRIES + 1
-    assert lines[-1] == "... et 5 joueur(s) de plus"
+    assert embed.description == "... et 5 joueur(s) de plus"
 
 
 def test_build_leaderboard_embed_empty():
     """With no entries, a placeholder message is shown instead of an empty list."""
-    embed = build_leaderboard_embed([], {}, None)
+    embed = build_leaderboard_embed([])
 
     assert embed.description == "Aucun point pour l'instant."
 
@@ -244,6 +219,24 @@ async def test_publish_leaderboard_sends_embed(db):
 
     assert len(channel.sent_embeds) == 1
     assert channel.sent_embeds[0] is not None
+
+
+@pytest.mark.asyncio
+async def test_publish_leaderboard_attaches_player_buttons_view(db):
+    """Per-player stats buttons are attached and the sent message id is stored on the guild."""
+    await Guild.upsert(db, GUILD_ID, channel_id=CHANNEL_ID)
+    await Player.upsert(db, GUILD_ID, AUTHOR_ID)
+    await LeaderboardEntry.upsert(db, GUILD_ID, AUTHOR_ID, points=3)
+    channel = _FakeChannel()
+    bot = _FakeBot({CHANNEL_ID: channel})
+
+    await publish_leaderboard(cast(discord.Client, bot), db, GUILD_ID)
+
+    assert len(channel.sent_views) == 1
+    assert channel.sent_views[0] is not None
+    updated = await Guild.get(db, GUILD_ID)
+    assert updated is not None
+    assert updated.leaderboard_message_id == 999
 
 
 @pytest.mark.asyncio
@@ -297,3 +290,150 @@ async def test_reset_leaderboard_does_not_touch_other_guilds(db, guild):
     other_entry = await LeaderboardEntry.get(db, other_guild_id, AUTHOR_ID)
     assert other_entry is not None
     assert other_entry.points == 3
+
+
+def test_build_ranked_embed_uses_custom_empty_message():
+    """A caller-provided empty_message is shown instead of the points-specific default."""
+    embed = build_ranked_embed("Titre", [], "Rien pour l'instant.")
+
+    assert embed.title == "Titre"
+    assert embed.description == "Rien pour l'instant."
+
+
+def test_build_player_entries_caps_and_labels_with_rank_and_value():
+    """Entries are capped to MAX_LEADERBOARD_ENTRIES and labeled 'rank. name — value'."""
+    rows = [(i, f"{i} pt(s)") for i in range(MAX_LEADERBOARD_ENTRIES + 5)]
+    players = {i: Player(guild_id=GUILD_ID, user_id=i) for i, _ in rows}
+    guild = _FakeGuild({i: _FakeMember(f"Joueur{i}") for i, _ in rows})
+
+    entries = build_player_entries(rows, players, cast(discord.Guild, guild))
+
+    assert len(entries) == MAX_LEADERBOARD_ENTRIES
+    assert entries[0] == (0, "1. Joueur0 — 0 pt(s)")
+    assert entries[1] == (1, "2. Joueur1 — 1 pt(s)")
+
+
+@pytest_asyncio.fixture
+async def two_anecdotes(db):
+    """Two anecdotes by AUTHOR_ID, each with a correct and a wrong choice."""
+    await Guild.upsert(db, GUILD_ID)
+    await Player.upsert(db, GUILD_ID, AUTHOR_ID)
+    anecdote = await create_anecdote(
+        db, GUILD_ID, AUTHOR_ID, "a", target_label="T", choice_labels=["W"]
+    )
+    other_anecdote = await create_anecdote(
+        db, GUILD_ID, AUTHOR_ID, "b", target_label="T2", choice_labels=["W2"]
+    )
+    choices = {c.label: c.id for c in await get_choices(db, anecdote.id)}
+    other_choices = {c.label: c.id for c in await get_choices(db, other_anecdote.id)}
+    return anecdote, other_anecdote, choices, other_choices
+
+
+@pytest.mark.asyncio
+async def test_get_ranked_entries_points(db, guild):
+    """POINTS ranks by leaderboard points, formatted as 'X pt(s)'."""
+    await LeaderboardEntry.upsert(db, GUILD_ID, AUTHOR_ID, points=3)
+    await LeaderboardEntry.upsert(db, GUILD_ID, VOTER_ID, points=10)
+
+    rows = await get_ranked_entries(db, GUILD_ID, LeaderboardKind.POINTS)
+
+    assert rows == [(VOTER_ID, "10 pt(s)"), (AUTHOR_ID, "3 pt(s)")]
+
+
+@pytest.mark.asyncio
+async def test_get_ranked_entries_votes(db, two_anecdotes):
+    """VOTES ranks by votes cast, formatted as 'X vote(s)'."""
+    anecdote, other_anecdote, choices, other_choices = two_anecdotes
+    await Vote.upsert(
+        db, anecdote.id, VOTER_ID, voted_for_id=choices["T"], guild_id=GUILD_ID
+    )
+    await Vote.upsert(
+        db,
+        other_anecdote.id,
+        VOTER_ID,
+        voted_for_id=other_choices["W2"],
+        guild_id=GUILD_ID,
+    )
+    await Vote.upsert(
+        db,
+        anecdote.id,
+        OTHER_VOTER_ID,
+        voted_for_id=choices["W"],
+        guild_id=GUILD_ID,
+    )
+
+    rows = await get_ranked_entries(db, GUILD_ID, LeaderboardKind.VOTES)
+
+    assert rows == [(VOTER_ID, "2 vote(s)"), (OTHER_VOTER_ID, "1 vote(s)")]
+
+
+@pytest.mark.asyncio
+async def test_get_ranked_entries_published_only_counts_revealed(db, two_anecdotes):
+    """PUBLISHED ranks by REVEALED anecdotes only."""
+    anecdote, other_anecdote, _, _ = two_anecdotes
+    await Anecdote.update(db, anecdote.id, state=AnecdoteState.REVEALED)
+    await Anecdote.update(db, other_anecdote.id, state=AnecdoteState.PUBLISHED)
+
+    rows = await get_ranked_entries(db, GUILD_ID, LeaderboardKind.PUBLISHED)
+
+    assert rows == [(AUTHOR_ID, "1 anecdote(s)")]
+
+
+@pytest.mark.asyncio
+async def test_get_ranked_entries_accuracy_excludes_zero_votes(db, two_anecdotes):
+    """ACCURACY only ranks players who cast at least one vote."""
+    anecdote, other_anecdote, choices, other_choices = two_anecdotes
+    await Vote.upsert(
+        db, anecdote.id, VOTER_ID, voted_for_id=choices["T"], guild_id=GUILD_ID
+    )
+    await Vote.upsert(
+        db,
+        other_anecdote.id,
+        VOTER_ID,
+        voted_for_id=other_choices["W2"],
+        guild_id=GUILD_ID,
+    )
+
+    rows = await get_ranked_entries(db, GUILD_ID, LeaderboardKind.ACCURACY)
+
+    assert rows == [(VOTER_ID, "1/2 (50%)")]
+
+
+@pytest.mark.asyncio
+async def test_restore_leaderboard_views_registers_stored_message(db):
+    """A guild with a stored leaderboard_message_id gets its view re-registered."""
+    await Guild.upsert(db, GUILD_ID, leaderboard_message_id=42)
+    await Player.upsert(db, GUILD_ID, AUTHOR_ID)
+    await LeaderboardEntry.upsert(db, GUILD_ID, AUTHOR_ID, points=3)
+    bot = _FakeBot({}, guilds={GUILD_ID: _FakeGuild({})})
+
+    await restore_leaderboard_views(cast(discord.Client, bot), db)
+
+    assert len(bot.added_views) == 1
+    _, message_id = bot.added_views[0]
+    assert message_id == 42
+
+
+@pytest.mark.asyncio
+async def test_restore_leaderboard_views_skips_without_stored_message(db, guild):
+    """A guild with no stored leaderboard_message_id is skipped."""
+    await Player.upsert(db, GUILD_ID, AUTHOR_ID)
+    await LeaderboardEntry.upsert(db, GUILD_ID, AUTHOR_ID, points=3)
+    bot = _FakeBot({}, guilds={GUILD_ID: _FakeGuild({})})
+
+    await restore_leaderboard_views(cast(discord.Client, bot), db)
+
+    assert bot.added_views == []
+
+
+@pytest.mark.asyncio
+async def test_restore_leaderboard_views_skips_guild_bot_has_left(db):
+    """A guild the bot is no longer part of is skipped even with a stored message id."""
+    await Guild.upsert(db, GUILD_ID, leaderboard_message_id=42)
+    await Player.upsert(db, GUILD_ID, AUTHOR_ID)
+    await LeaderboardEntry.upsert(db, GUILD_ID, AUTHOR_ID, points=3)
+    bot = _FakeBot({})
+
+    await restore_leaderboard_views(cast(discord.Client, bot), db)
+
+    assert bot.added_views == []

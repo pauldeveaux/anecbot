@@ -37,6 +37,15 @@ class AnecdoteState(StrEnum):
     REVEALED = "REVEALED"
 
 
+class LeaderboardKind(StrEnum):
+    """Ranking metric for a /leaderboard subcommand."""
+
+    POINTS = "points"
+    ACCURACY = "accuracy"
+    PUBLISHED = "published"
+    VOTES = "votes"
+
+
 class VoteResult(StrEnum):
     """Outcome of attempting to record a vote."""
 

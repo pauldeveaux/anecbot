@@ -61,7 +61,12 @@ class _FakeChannel:
         """Return the pre-seeded fake message matching the id."""
         return self._messages[message_id]
 
-    async def send(self, *, embed: discord.Embed | None = None) -> _FakeMessage:
+    async def send(
+        self,
+        *,
+        embed: discord.Embed | None = None,
+        view: discord.ui.View | None = None,
+    ) -> _FakeMessage:
         """Record the sent embed (used when the leaderboard is published)."""
         self.sent_embeds.append(embed)
         return _FakeMessage(message_id=len(self.sent_embeds) + 9000)

@@ -7,6 +7,14 @@ from anecbot.cogs.general.handlers import leaderboard as leaderboard_handler
 from anecbot.cogs.general.handlers import next as next_handler
 from anecbot.cogs.general.handlers import rules as rules_handler
 from anecbot.cogs.general.handlers import stats as stats_handler
+from anecbot.models.enums import LeaderboardKind
+
+LEADERBOARD_CHOICES = [
+    app_commands.Choice(name="points", value=LeaderboardKind.POINTS),
+    app_commands.Choice(name="accuracy", value=LeaderboardKind.ACCURACY),
+    app_commands.Choice(name="published", value=LeaderboardKind.PUBLISHED),
+    app_commands.Choice(name="votes", value=LeaderboardKind.VOTES),
+]
 
 
 class GeneralCog(commands.Cog):
@@ -58,12 +66,19 @@ class GeneralCog(commands.Cog):
         await next_handler.handle(interaction)
 
     @app_commands.command(
-        name="leaderboard", description="Afficher le classement actuel"
+        name="leaderboard", description="Afficher un classement (points par défaut)"
     )
     @app_commands.guild_only()
-    async def leaderboard(self, interaction: discord.Interaction):
-        """Show the current leaderboard."""
-        await leaderboard_handler.handle(interaction)
+    @app_commands.describe(kind="Le classement à afficher (points par défaut)")
+    @app_commands.choices(kind=LEADERBOARD_CHOICES)
+    async def leaderboard(
+        self,
+        interaction: discord.Interaction,
+        kind: app_commands.Choice[str] | None = None,
+    ):
+        """Show the leaderboard ranked by the given kind, default points."""
+        selected = LeaderboardKind(kind.value) if kind else LeaderboardKind.POINTS
+        await leaderboard_handler.handle(interaction, selected)
 
 
 async def setup(bot):

@@ -45,7 +45,12 @@ class _FakeChannel:
         self.sent_embeds: list[discord.Embed | None] = []
         self._messages: dict[int, _FakeMessage] = {}
 
-    async def send(self, *, embed: discord.Embed | None = None) -> _FakeMessage:
+    async def send(
+        self,
+        *,
+        embed: discord.Embed | None = None,
+        view: discord.ui.View | None = None,
+    ) -> _FakeMessage:
         """Record the send and return a fake message with a fixed id."""
         self.sent_embeds.append(embed)
         message = _FakeMessage(message_id=999)
