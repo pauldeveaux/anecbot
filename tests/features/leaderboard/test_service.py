@@ -84,14 +84,14 @@ async def guild(db):
 
 
 @pytest.mark.asyncio
-async def test_award_points_credits_correct_voter_and_author(db, guild):
-    """A correct voter and the author each get +1 point; a wrong voter gets none."""
+async def test_award_points_credits_correct_voter_and_author_bonus(db, guild):
+    """A correct voter gets +1; a wrong voter gets none; the author gets the quality bonus."""
     votes = [
         Vote(anecdote_id=1, user_id=VOTER_ID, voted_for_id=TARGET_ID),
         Vote(anecdote_id=1, user_id=OTHER_VOTER_ID, voted_for_id=OTHER_VOTER_ID),
     ]
 
-    await award_points(db, GUILD_ID, votes, TARGET_ID, AUTHOR_ID)
+    await award_points(db, GUILD_ID, votes, TARGET_ID, AUTHOR_ID, [5])
 
     voter_entry = await LeaderboardEntry.get(db, GUILD_ID, VOTER_ID)
     assert voter_entry is not None
@@ -100,7 +100,7 @@ async def test_award_points_credits_correct_voter_and_author(db, guild):
     assert other_entry is None
     author_entry = await LeaderboardEntry.get(db, GUILD_ID, AUTHOR_ID)
     assert author_entry is not None
-    assert author_entry.points == 1
+    assert author_entry.points == 3
 
 
 @pytest.mark.asyncio
@@ -109,21 +109,45 @@ async def test_award_points_accumulates_across_calls(db, guild):
     await LeaderboardEntry.upsert(db, GUILD_ID, AUTHOR_ID, points=5)
     votes = [Vote(anecdote_id=1, user_id=VOTER_ID, voted_for_id=TARGET_ID)]
 
-    await award_points(db, GUILD_ID, votes, TARGET_ID, AUTHOR_ID)
+    await award_points(db, GUILD_ID, votes, TARGET_ID, AUTHOR_ID, [3])
 
     author_entry = await LeaderboardEntry.get(db, GUILD_ID, AUTHOR_ID)
     assert author_entry is not None
-    assert author_entry.points == 6
+    assert author_entry.points == 5
 
 
 @pytest.mark.asyncio
-async def test_award_points_author_gets_point_even_with_no_votes(db, guild):
-    """The author's flat point isn't dependent on anyone voting at all."""
-    await award_points(db, GUILD_ID, [], TARGET_ID, AUTHOR_ID)
+async def test_award_points_author_gets_no_bonus_with_no_quality_votes(db, guild):
+    """No quality votes cast means a neutral (0) bonus, not a flat point anymore."""
+    await award_points(db, GUILD_ID, [], TARGET_ID, AUTHOR_ID, [])
 
     author_entry = await LeaderboardEntry.get(db, GUILD_ID, AUTHOR_ID)
     assert author_entry is not None
-    assert author_entry.points == 1
+    assert author_entry.points == 0
+
+
+@pytest.mark.asyncio
+async def test_award_points_author_gets_malus_for_low_quality(db, guild):
+    """A low average quality rating deducts points from the author."""
+    await LeaderboardEntry.upsert(db, GUILD_ID, AUTHOR_ID, points=5)
+
+    await award_points(db, GUILD_ID, [], TARGET_ID, AUTHOR_ID, [1])
+
+    author_entry = await LeaderboardEntry.get(db, GUILD_ID, AUTHOR_ID)
+    assert author_entry is not None
+    assert author_entry.points == 3
+
+
+@pytest.mark.asyncio
+async def test_award_points_floors_at_zero(db, guild):
+    """A malus larger than the author's current total floors at 0, never goes negative."""
+    await LeaderboardEntry.upsert(db, GUILD_ID, AUTHOR_ID, points=1)
+
+    await award_points(db, GUILD_ID, [], TARGET_ID, AUTHOR_ID, [1])
+
+    author_entry = await LeaderboardEntry.get(db, GUILD_ID, AUTHOR_ID)
+    assert author_entry is not None
+    assert author_entry.points == 0
 
 
 def test_build_leaderboard_embed_ranks_by_points_descending():

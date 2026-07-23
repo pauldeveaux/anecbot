@@ -18,6 +18,7 @@ from anecbot.models.anecdote_choice import AnecdoteChoice
 from anecbot.models.guild import Guild
 from anecbot.models.leaderboard import LeaderboardEntry
 from anecbot.models.player import Player
+from anecbot.models.quality_vote import QualityVote
 from anecbot.models.vote import Vote
 from anecbot.utils.text import with_blank_lines
 
@@ -188,8 +189,11 @@ async def test_get_due_reveals_includes_revealing_unconditionally(db, players):
     assert [a.id for a in due] == [anecdote.id]
 
 
+QUALITY_ONLY_ID = 999
+
+
 def test_build_reveal_embed_shows_votes_and_spoiler():
-    """The embed lists each vote with a correctness mark and spoiler-tags the answer."""
+    """The embed lists each vote with a correctness mark, merged with its quality rating."""
     anecdote = Anecdote(
         id=1, guild_id=GUILD_ID, author_id=AUTHOR_ID, content="Un truc drôle"
     )
@@ -198,37 +202,53 @@ def test_build_reveal_embed_shows_votes_and_spoiler():
         AnecdoteChoice(id=2, anecdote_id=1, label="Autre", is_correct=0),
     ]
     votes = [Vote(anecdote_id=1, user_id=VOTER_ID, voted_for_id=1)]
+    quality_votes = [
+        QualityVote(anecdote_id=1, user_id=VOTER_ID, rating=5),
+        QualityVote(anecdote_id=1, user_id=QUALITY_ONLY_ID, rating=2),
+    ]
     players = {
         AUTHOR_ID: Player(guild_id=GUILD_ID, user_id=AUTHOR_ID),
         VOTER_ID: Player(guild_id=GUILD_ID, user_id=VOTER_ID),
+        QUALITY_ONLY_ID: Player(guild_id=GUILD_ID, user_id=QUALITY_ONLY_ID),
     }
     guild = _FakeGuild(
         GUILD_ID,
-        {AUTHOR_ID: _FakeMember("Auteur"), VOTER_ID: _FakeMember("Votant")},
+        {
+            AUTHOR_ID: _FakeMember("Auteur"),
+            VOTER_ID: _FakeMember("Votant"),
+            QUALITY_ONLY_ID: _FakeMember("Noteur"),
+        },
     )
 
     embed = build_reveal_embed(
-        anecdote, votes, players, cast(discord.Guild, guild), choices
+        anecdote, votes, quality_votes, players, cast(discord.Guild, guild), choices
     )
 
     content_field = embed.fields[0]
     assert content_field.value == with_blank_lines("Un truc drôle")
     votes_field = next(f for f in embed.fields if f.name == "🗳️ Votes")
-    assert "✅" in (votes_field.value or "")
-    assert "Votant" in (votes_field.value or "")
-    assert "Cible" in (votes_field.value or "")
+    votes_value = votes_field.value or ""
+    assert "✅ Votant → Cible · ⭐ 5/5" in votes_value
+    assert "Noteur · ⭐ 2/5" in votes_value
     answer_field = next(f for f in embed.fields if f.name == "🎯 Réponse")
     assert answer_field.value == "|| Cible ||"
     author_field = next(f for f in embed.fields if f.name == "✍️ Auteur")
     assert author_field.value == "Auteur"
+    average_field = next(f for f in embed.fields if f.name == "⭐ Note moyenne")
+    assert average_field.value == "3.5/5 (2 vote(s)) → +2 pt(s) auteur"
+    # the average now lives in its own field, placed after Réponse/Auteur, not inside Votes
+    assert list(embed.fields).index(average_field) > list(embed.fields).index(
+        author_field
+    )
+    assert not any(f.name == "⭐ Qualité" for f in embed.fields)
 
 
 def test_build_reveal_embed_no_votes():
-    """With no votes, the Votes field says so instead of listing anything."""
+    """With no votes at all (guess or quality), the Votes field says so."""
     anecdote = Anecdote(id=1, guild_id=GUILD_ID, author_id=AUTHOR_ID, content="x")
     choices = [AnecdoteChoice(id=1, anecdote_id=1, label="Cible", is_correct=1)]
 
-    embed = build_reveal_embed(anecdote, [], {}, None, choices)
+    embed = build_reveal_embed(anecdote, [], [], {}, None, choices)
 
     votes_field = next(f for f in embed.fields if f.name == "🗳️ Votes")
     assert votes_field.value == "Aucun vote."
@@ -247,13 +267,16 @@ def test_build_reveal_embed_falls_back_to_count_when_votes_list_too_long():
         Vote(anecdote_id=1, user_id=i, voted_for_id=1 if i % 2 == 0 else 999 + i)
         for i in range(100)
     ]
+    quality_votes = [QualityVote(anecdote_id=1, user_id=i, rating=5) for i in range(10)]
 
     embed = build_reveal_embed(
-        anecdote, votes, players, cast(discord.Guild, guild), choices
+        anecdote, votes, quality_votes, players, cast(discord.Guild, guild), choices
     )
 
     votes_field = next(f for f in embed.fields if f.name == "🗳️ Votes")
     assert votes_field.value == "✅ 50/100 ont deviné juste"
+    average_field = next(f for f in embed.fields if f.name == "⭐ Note moyenne")
+    assert average_field.value == "5.0/5 (10 vote(s)) → +3 pt(s) auteur"
 
 
 @pytest.mark.asyncio
@@ -280,11 +303,14 @@ async def test_reveal_anecdote_transitions_to_revealed(db, players):
 
 
 @pytest.mark.asyncio
-async def test_reveal_anecdote_awards_points_to_correct_voter_and_author(db, players):
-    """The correct voter and the anecdote's author each get +1 point."""
+async def test_reveal_anecdote_awards_points_to_correct_voter_and_quality_bonus(
+    db, players
+):
+    """The correct voter gets +1; the author gets the quality bonus from cast ratings."""
     anecdote = await _published_anecdote(db, "2026-07-13T15:00:00")
     correct_id = await _correct_choice_id(db, anecdote.id)
     await Vote.upsert(db, anecdote.id, VOTER_ID, voted_for_id=correct_id)
+    await QualityVote.upsert(db, anecdote.id, VOTER_ID, rating=5, guild_id=GUILD_ID)
     channel = _FakeChannel({999: _FakeMessage(999)})
     bot = _FakeBot({CHANNEL_ID: channel}, guild=_FakeGuild(GUILD_ID))
 
@@ -295,12 +321,12 @@ async def test_reveal_anecdote_awards_points_to_correct_voter_and_author(db, pla
     assert voter_entry.points == 1
     author_entry = await LeaderboardEntry.get(db, GUILD_ID, AUTHOR_ID)
     assert author_entry is not None
-    assert author_entry.points == 1
+    assert author_entry.points == 3
 
 
 @pytest.mark.asyncio
 async def test_reveal_anecdote_no_points_for_wrong_voter(db, players):
-    """A voter who guessed wrong gets no point, but the author still does."""
+    """A voter who guessed wrong gets no point; the author gets no bonus without quality votes."""
     anecdote = await _published_anecdote(db, "2026-07-13T15:00:00")
     await Vote.upsert(db, anecdote.id, VOTER_ID, voted_for_id=WRONG_CHOICE_ID)
     channel = _FakeChannel({999: _FakeMessage(999)})
@@ -312,7 +338,38 @@ async def test_reveal_anecdote_no_points_for_wrong_voter(db, players):
     assert voter_entry is None
     author_entry = await LeaderboardEntry.get(db, GUILD_ID, AUTHOR_ID)
     assert author_entry is not None
-    assert author_entry.points == 1
+    assert author_entry.points == 0
+
+
+@pytest.mark.asyncio
+async def test_reveal_anecdote_author_gets_malus_for_low_quality(db, players):
+    """A low average quality rating deducts points from the author at reveal."""
+    await LeaderboardEntry.upsert(db, GUILD_ID, AUTHOR_ID, points=5)
+    anecdote = await _published_anecdote(db, "2026-07-13T15:00:00")
+    await QualityVote.upsert(db, anecdote.id, VOTER_ID, rating=1, guild_id=GUILD_ID)
+    channel = _FakeChannel({999: _FakeMessage(999)})
+    bot = _FakeBot({CHANNEL_ID: channel}, guild=_FakeGuild(GUILD_ID))
+
+    await reveal_anecdote(cast(discord.Client, bot), db, anecdote)
+
+    author_entry = await LeaderboardEntry.get(db, GUILD_ID, AUTHOR_ID)
+    assert author_entry is not None
+    assert author_entry.points == 3
+
+
+@pytest.mark.asyncio
+async def test_reveal_anecdote_author_points_floor_at_zero(db, players):
+    """A malus larger than the author's current total floors at 0 at reveal, not negative."""
+    anecdote = await _published_anecdote(db, "2026-07-13T15:00:00")
+    await QualityVote.upsert(db, anecdote.id, VOTER_ID, rating=1, guild_id=GUILD_ID)
+    channel = _FakeChannel({999: _FakeMessage(999)})
+    bot = _FakeBot({CHANNEL_ID: channel}, guild=_FakeGuild(GUILD_ID))
+
+    await reveal_anecdote(cast(discord.Client, bot), db, anecdote)
+
+    author_entry = await LeaderboardEntry.get(db, GUILD_ID, AUTHOR_ID)
+    assert author_entry is not None
+    assert author_entry.points == 0
 
 
 @pytest.mark.asyncio
@@ -367,7 +424,7 @@ async def test_reveal_anecdote_does_not_reaward_points_on_retry_from_published(
     assert voter_entry.points == 1
     author_entry = await LeaderboardEntry.get(db, GUILD_ID, AUTHOR_ID)
     assert author_entry is not None
-    assert author_entry.points == 1
+    assert author_entry.points == 0
 
 
 @pytest.mark.asyncio

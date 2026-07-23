@@ -132,7 +132,7 @@ async def test_full_publish_vote_reveal_cycle(db):
     assert voter_entry.points == 1
     author_entry = await LeaderboardEntry.get(db, GUILD_ID, AUTHOR_ID)
     assert author_entry is not None
-    assert author_entry.points == 1
+    assert author_entry.points == 0
 
     # embed 1 = the anecdote announcement, embed 2 = the post-reveal leaderboard
     assert len(channel.sent_embeds) == 2
