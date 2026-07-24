@@ -9,7 +9,6 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 from anecbot.features.anecdote.service import backfill_migrated_target_labels
-from anecbot.features.leaderboard.service import restore_leaderboard_views
 from anecbot.features.lifecycle.service import purge_guild
 from anecbot.features.publisher.service import restore_active_views
 from anecbot.features.release_notes.service import announce_release_if_new
@@ -50,6 +49,7 @@ def create_bot(settings: Settings) -> Bot:
 
     bot = Bot(command_prefix="!", intents=intents)
     views_restored = False
+    setup_done = asyncio.Event()
 
     @bot.event
     async def on_ready():
@@ -66,11 +66,11 @@ def create_bot(settings: Settings) -> Bot:
         if not views_restored:
             await backfill_migrated_target_labels(bot, bot.db)
             await restore_active_views(bot, bot.db)
-            await restore_leaderboard_views(bot, bot.db)
             await announce_release_if_new(
                 bot, bot.db, Path(settings.release_notes_path)
             )
             views_restored = True
+        setup_done.set()
 
     @bot.event
     async def on_guild_remove(guild: discord.Guild):
@@ -89,8 +89,16 @@ def create_bot(settings: Settings) -> Bot:
 
     @batch_loop.before_loop
     async def before_batch_loop() -> None:
-        """Wait for the bot to be ready, then align the first tick to the next round minute."""
+        """Wait for on_ready's startup setup to finish, then align to the next round minute.
+
+        bot.wait_until_ready() alone isn't enough: discord.py flips its internal ready flag
+        before the on_ready handler above (which runs the migration label backfill and view
+        restoration) has actually finished running, since the handler is dispatched as a
+        fire-and-forget task rather than awaited. Without this, the batch loop's first tick can
+        reveal an anecdote whose choice labels haven't been backfilled from raw ids yet.
+        """
         await bot.wait_until_ready()
+        await setup_done.wait()
         now = utcnow()
         await asyncio.sleep(60 - now.second - now.microsecond / 1_000_000)
 
