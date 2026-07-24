@@ -31,4 +31,3 @@ class Guild(Model):
     timezone: GuildTimezone = GuildTimezone.EUROPE_PARIS
     leaderboard_reset_in_progress: int = 0
     leaderboard_reset_published: int = 0
-    leaderboard_message_id: int | None = None
