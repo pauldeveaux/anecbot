@@ -17,16 +17,6 @@ from anecbot.models.guild import Guild
 
 logger = logging.getLogger(__name__)
 
-# States a not-yet-REVEALED anecdote can be in — the only ones where a stale migration-backfilled
-# label (a raw user id) can still surface to players (PUBLISHED) or is worth fixing before it does
-# (PENDING/RUNNING/REVEALING).
-_NOT_REVEALED_STATES = (
-    AnecdoteState.PENDING,
-    AnecdoteState.RUNNING,
-    AnecdoteState.PUBLISHED,
-    AnecdoteState.REVEALING,
-)
-
 
 async def daily_limit_status(
     db: psycopg.AsyncConnection, guild_id: int, author_id: int
@@ -92,24 +82,25 @@ async def backfill_migrated_target_labels(
     migrations/0002_anecdote_choices.sql backfilled anecdote_choices from the dropped target_id
     column using the raw user id as text, since Discord display names aren't reachable from SQL.
     Once the bot is ready and has its member cache, replace any resolvable purely-numeric label
-    on a not-yet-REVEALED anecdote with the member's current display name, so publish/reveal show
-    names instead of ids. Safe to call on every startup: once a label is resolved it's no longer
-    numeric, so there's nothing left to redo on later runs.
+    with the member's current display name — including on already-REVEALED anecdotes, since a
+    startup race could have let one reveal before this ran, leaving its choices with raw ids
+    forever otherwise. Rewriting a REVEALED anecdote's labels doesn't touch the Discord message
+    already sent for it; it only keeps the stored data consistent. Safe to call on every startup:
+    once a label is resolved it's no longer numeric, so there's nothing left to redo on later runs.
     """
     resolved = 0
-    for state in _NOT_REVEALED_STATES:
-        for anecdote in await Anecdote.list(db, state=state):
-            guild = bot.get_guild(anecdote.guild_id)
-            if guild is None:
+    for anecdote in await Anecdote.list(db):
+        guild = bot.get_guild(anecdote.guild_id)
+        if guild is None:
+            continue
+        for choice in await get_choices(db, anecdote.id):
+            if not choice.label.isdigit():
                 continue
-            for choice in await get_choices(db, anecdote.id):
-                if not choice.label.isdigit():
-                    continue
-                member = guild.get_member(int(choice.label))
-                if member is None:
-                    continue
-                await AnecdoteChoice.update(db, choice.id, label=member.display_name)
-                resolved += 1
+            member = guild.get_member(int(choice.label))
+            if member is None:
+                continue
+            await AnecdoteChoice.update(db, choice.id, label=member.display_name)
+            resolved += 1
     if resolved:
         logger.info("Resolved %d migration-backfilled choice label(s)", resolved)
     return resolved
