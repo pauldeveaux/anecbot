@@ -514,8 +514,10 @@ async def test_backfill_ignores_non_numeric_labels(db, players):
 
 
 @pytest.mark.asyncio
-async def test_backfill_ignores_revealed_anecdotes(db, players):
-    """REVEALED anecdotes are left alone — their choices are historical, not upcoming UI."""
+async def test_backfill_also_resolves_revealed_anecdotes(db, players):
+    """REVEALED anecdotes are still fixed in storage — a startup race can reveal one before this
+    runs, leaving its choices with raw ids forever otherwise; rewriting them doesn't touch the
+    Discord message already sent, only the stored data."""
     anecdote = await Anecdote.create(
         db, guild_id=GUILD_ID, author_id=AUTHOR_ID, content="x"
     )
@@ -527,10 +529,10 @@ async def test_backfill_ignores_revealed_anecdotes(db, players):
 
     resolved = await backfill_migrated_target_labels(cast(discord.Client, bot), db)
 
-    assert resolved == 0
+    assert resolved == 1
     updated = await AnecdoteChoice.get(db, choice.id)
     assert updated is not None
-    assert updated.label == str(TARGET_ID)
+    assert updated.label == "Cible"
 
 
 class _FakeResponse:

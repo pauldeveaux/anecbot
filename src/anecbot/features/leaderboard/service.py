@@ -13,7 +13,6 @@ from anecbot.features.leaderboard.repository import (
     delete_all_entries,
     mark_leaderboard_published,
 )
-from anecbot.features.leaderboard.views import LeaderboardPlayerButtonsView
 from anecbot.features.quality_vote.service import quality_bonus
 from anecbot.models.enums import LeaderboardKind
 from anecbot.models.guild import Guild
@@ -58,56 +57,58 @@ async def award_points(
     await _add_points(db, guild_id, author_id, quality_bonus(quality_ratings))
 
 
-def build_ranked_embed(
-    title: str, rows: list[tuple[int, str]], empty_message: str
-) -> discord.Embed:
-    """Build a header embed for a ranked leaderboard, capped to a top-N.
-
-    Each entry's rank/name/value now lives on its own button label (built by
-    build_player_entries) rather than as a description line — Discord always renders
-    components below the embed, so there's no way to align a button with a specific line of
-    embed text. The embed itself only carries the title plus an empty/overflow note.
-    """
-    shown = rows[:MAX_LEADERBOARD_ENTRIES]
-    remaining = len(rows) - len(shown)
-
-    if not rows:
-        description = empty_message
-    elif remaining > 0:
-        description = f"... et {remaining} joueur(s) de plus"
-    else:
-        description = None
-
-    return discord.Embed(
-        title=title, description=description, color=discord.Color.gold()
-    )
-
-
-def build_leaderboard_embed(entries: list[LeaderboardEntry]) -> discord.Embed:
-    """Build the header embed for the points leaderboard, capped to a top-N."""
-    ranked = sorted(entries, key=lambda e: e.points, reverse=True)
-    rows = [(e.user_id, f"{e.points} pt(s)") for e in ranked]
-    return build_ranked_embed("🏆 Classement", rows, "Aucun point pour l'instant.")
-
-
 def build_player_entries(
     rows: list[tuple[int, str]],
     players: dict[int, Player],
     discord_guild: discord.Guild | None,
 ) -> list[tuple[int, str]]:
-    """Build (user_id, label) pairs for each row's button, capped to MAX_LEADERBOARD_ENTRIES.
+    """Build (user_id, label) pairs for each row, capped to MAX_LEADERBOARD_ENTRIES.
 
-    label is the full "rank. name — value" line, since the leaderboard's per-row info now
-    lives on the buttons themselves rather than in the embed.
+    label is the full "rank. name — value" line shown in the leaderboard embed.
     """
     shown = rows[:MAX_LEADERBOARD_ENTRIES]
     entries = []
     for rank, (user_id, value) in enumerate(shown, start=1):
         player = players.get(user_id)
         name = display_name(player, discord_guild) if player else str(user_id)
-        label = f"{rank}. {name} — {value}"
-        entries.append((user_id, label[:80]))
+        entries.append((user_id, f"{rank}. {name} — {value}"))
     return entries
+
+
+def build_ranked_embed(
+    title: str,
+    rows: list[tuple[int, str]],
+    empty_message: str,
+    players: dict[int, Player],
+    discord_guild: discord.Guild | None,
+) -> discord.Embed:
+    """Build a ranked leaderboard embed, listing each entry's rank/name/value, capped to a top-N."""
+    player_entries = build_player_entries(rows, players, discord_guild)
+    remaining = len(rows) - len(player_entries)
+
+    if not rows:
+        description = empty_message
+    else:
+        description = "\n".join(label for _, label in player_entries)
+        if remaining > 0:
+            description += f"\n... et {remaining} joueur(s) de plus"
+
+    return discord.Embed(
+        title=title, description=description, color=discord.Color.gold()
+    )
+
+
+def build_leaderboard_embed(
+    entries: list[LeaderboardEntry],
+    players: dict[int, Player],
+    discord_guild: discord.Guild | None,
+) -> discord.Embed:
+    """Build the header embed for the points leaderboard, capped to a top-N."""
+    ranked = sorted(entries, key=lambda e: e.points, reverse=True)
+    rows = [(e.user_id, f"{e.points} pt(s)") for e in ranked]
+    return build_ranked_embed(
+        "🏆 Classement", rows, "Aucun point pour l'instant.", players, discord_guild
+    )
 
 
 async def get_ranked_entries(
@@ -147,7 +148,7 @@ async def get_ranked_entries(
 async def publish_leaderboard(
     bot: discord.Client, db: psycopg.AsyncConnection, guild_id: int
 ) -> None:
-    """Send the current leaderboard standings to the guild's channel with a player picker."""
+    """Send the current leaderboard standings to the guild's channel."""
     guild = await Guild.get(db, guild_id)
     if guild is None or guild.channel_id is None:
         return
@@ -162,52 +163,9 @@ async def publish_leaderboard(
 
     players = {p.user_id: p for p in await Player.list(db, guild_id=guild_id)}
     discord_guild = bot.get_guild(guild_id)
-    embed = build_leaderboard_embed(entries)
+    embed = build_leaderboard_embed(entries, players, discord_guild)
 
-    rows = [
-        (e.user_id, f"{e.points} pt(s)")
-        for e in sorted(entries, key=lambda e: e.points, reverse=True)
-    ]
-    player_entries = build_player_entries(rows, players, discord_guild)
-    view = LeaderboardPlayerButtonsView(guild_id, player_entries)
-
-    message = await channel.send(embed=embed, view=view)
-    await Guild.update(db, guild_id, leaderboard_message_id=message.id)
-
-
-async def restore_leaderboard_views(
-    bot: discord.Client, db: psycopg.AsyncConnection
-) -> None:
-    """Re-register the persistent points-leaderboard player buttons for every guild, once on startup.
-
-    LeaderboardPlayerButtonsView instances only live in memory for the process that created
-    them, so a restart otherwise leaves the last auto-posted leaderboard message with buttons
-    nothing responds to.
-    """
-    guilds = await Guild.list(db)
-    restored = 0
-    for guild in guilds:
-        if guild.leaderboard_message_id is None:
-            continue
-        if bot.get_guild(guild.guild_id) is None:
-            continue
-
-        entries = await LeaderboardEntry.list(db, guild_id=guild.guild_id)
-        if not entries:
-            continue
-
-        players = {p.user_id: p for p in await Player.list(db, guild_id=guild.guild_id)}
-        discord_guild = bot.get_guild(guild.guild_id)
-        rows = [
-            (e.user_id, f"{e.points} pt(s)")
-            for e in sorted(entries, key=lambda e: e.points, reverse=True)
-        ]
-        player_entries = build_player_entries(rows, players, discord_guild)
-        view = LeaderboardPlayerButtonsView(guild.guild_id, player_entries)
-        bot.add_view(view, message_id=guild.leaderboard_message_id)
-        restored += 1
-
-    logger.info("Restored %d leaderboard view(s)", restored)
+    await channel.send(embed=embed)
 
 
 async def claim_leaderboard_reset_cycle(

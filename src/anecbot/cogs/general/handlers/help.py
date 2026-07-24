@@ -80,7 +80,6 @@ USER_GUIDE = (
     "- `/leaderboard kind:accuracy` — classement par précision de vote\n"
     "- `/leaderboard kind:published` — classement par anecdotes révélées\n"
     "- `/leaderboard kind:votes` — classement par votes soumis\n"
-    "- Clique sur le bouton d'un joueur pour voir ses statistiques\n"
     "- +1 point par bonne réponse\n"
     "- L'auteur gagne un bonus/malus selon la note de qualité moyenne reçue "
     "(1-1.5 = -2, 1.5-2.5 = -1, 2.5-3.5 = 0, 3.5-4.5 = +2, 4.5-5 = +3)\n\n"
